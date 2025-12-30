@@ -211,6 +211,32 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
           counts.total++;
         });
 
+        // Para tracks normales, construir '__all__' respetando el orden de subcarpetas
+        // El orden debe ser el mismo que en imagesList (que ya viene ordenado desde useTracks)
+        if (!isCroquetas25) {
+          if (!subfolderImageIndicesRef.current.has('__all__')) {
+            subfolderImageIndicesRef.current.set('__all__', []);
+          }
+          
+          // Construir __all__ en el orden correcto: primero todas las subcarpetas ordenadas,
+          // luego agregar los índices de cada subcarpeta en ese orden
+          // Esto asegura que el orden sea: __root__ primero, luego subcarpetas alfabéticamente
+          const allSubfolders = Array.from(subfolderImageIndicesRef.current.keys())
+            .filter(sf => sf !== '__all__')
+            .sort((a, b) => {
+              if (a === '__root__') return -1;
+              if (b === '__root__') return 1;
+              return a.localeCompare(b);
+            });
+          
+          // Agregar índices en el orden correcto de subcarpetas
+          allSubfolders.forEach(subfolder => {
+            const indices = subfolderImageIndicesRef.current.get(subfolder) || [];
+            // Los índices dentro de cada subcarpeta ya están en orden (ordenados alfabéticamente en useTracks)
+            subfolderImageIndicesRef.current.get('__all__').push(...indices);
+          });
+        }
+        
         setAllImages(imagesList);
         setPreloadProgress(0);
 
@@ -431,9 +457,16 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
       const currentSubfolder = getCurrentSubfolder();
       normalizedSubfolder = currentSubfolder === null ? '__root__' : currentSubfolder;
       
-      imageIndices = subfolderImageIndicesRef.current.get(normalizedSubfolder);
+      // Siempre usar las imágenes de la subcarpeta correspondiente al audio actual
+      if (subfolderImageIndicesRef.current.has(normalizedSubfolder)) {
+        imageIndices = subfolderImageIndicesRef.current.get(normalizedSubfolder);
+      } else {
+        // Fallback: si no hay índices para esta subcarpeta, usar __all__ como último recurso
+        imageIndices = subfolderImageIndicesRef.current.get('__all__');
+        normalizedSubfolder = '__all__';
+      }
       
-      // Fallback: si no hay índices para esta subcarpeta, usar todas
+      // Fallback final: si no hay índices, usar todas las imágenes
       if (!imageIndices || imageIndices.length === 0) {
         imageIndices = Array.from({ length: allImages.length }, (_, i) => i);
       }

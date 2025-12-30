@@ -444,7 +444,17 @@ const Croquetas = () => {
     
     if (!selectedTrack || audioStarted) return;
     
-      // Detectar iOS (especialmente Chrome en iOS)
+    // Asegurar que el AudioContext esté resumido antes de iniciar
+    const audioContext = analyserRef?.current?.context || window.__globalAudioContext;
+    if (audioContext && audioContext.state === 'suspended') {
+      try {
+        await audioContext.resume();
+      } catch (resumeErr) {
+        console.warn('[Croquetas] Error resumiendo AudioContext:', resumeErr);
+      }
+    }
+    
+    // Detectar iOS (especialmente Chrome en iOS)
     if (typeof window === 'undefined' || typeof navigator === 'undefined') return;
       const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
       const isChromeIOS = isIOS && /CriOS/.test(navigator.userAgent);
@@ -458,7 +468,6 @@ const Croquetas = () => {
           const playPromise = audioRef.current.play();
               if (playPromise !== undefined) {
                 playPromise.then(() => {
-              console.log('[Croquetas] Audio iniciado directamente desde click en iOS');
               setIsPlaying(true);
                 }).catch(playErr => {
               console.warn('[Croquetas] Error iniciando audio directamente:', playErr);
@@ -475,7 +484,6 @@ const Croquetas = () => {
           const playPromise = audioRef.current.play();
           if (playPromise !== undefined) {
             playPromise.then(() => {
-              console.log('[Croquetas] Audio iniciado desde click');
               setIsPlaying(true);
             }).catch(playErr => {
               console.warn('[Croquetas] Error iniciando audio:', playErr);
@@ -491,7 +499,7 @@ const Croquetas = () => {
     
     setShowStartButton(false);
     setAudioStarted(true);
-  }, [selectedTrack, audioStarted, audioRef, setIsPlaying]);
+  }, [selectedTrack, audioStarted, audioRef, setIsPlaying, analyserRef]);
 
   const handleClick = async (e) => {
     if (!audioStarted && selectedTrack && showStartButton && startButtonRef.current) {
@@ -797,8 +805,8 @@ const Croquetas = () => {
           <LoadingProgressHandler onTriggerCallbackRef={triggerCallbackRef} audioStarted={audioStarted} audioRef={audioRef} />
           {selectedTrack && audioSrcs.length > 0 && audioRef?.current && (
             <AudioAnalyzer 
-              onBeat={handleBeat} 
-              onVoice={handleVoice} 
+              onBeat={audioStarted ? handleBeat : null} 
+              onVoice={audioStarted ? handleVoice : null} 
               audioRef={audioRef} 
               currentAudioIndex={currentAudioIndex}
               analyserRef={analyserRef}

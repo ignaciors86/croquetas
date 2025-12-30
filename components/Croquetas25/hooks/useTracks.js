@@ -3,9 +3,10 @@ import { useState, useEffect } from 'react';
 const normalizeName = (name) => name?.toLowerCase().replace(/\s+/g, '-') || '';
 
 /**
- * Hook para cargar tracks desde el manifest JSON
+ * Hook para cargar tracks desde API route que escanea el directorio en tiempo de ejecución
  * - Tracks normales: imágenes secuenciales por subcarpeta, asociadas a audios por subcarpeta
  * - Croquetas25: imágenes mezcladas de todas las carpetas
+ * - Orden: __root__ primero, luego subcarpetas alfabéticamente, imágenes dentro de cada subcarpeta alfabéticamente
  */
 export const useTracks = () => {
   const [tracks, setTracks] = useState([]);
@@ -14,13 +15,13 @@ export const useTracks = () => {
   useEffect(() => {
     const loadTracks = async () => {
       try {
-        // Cargar manifest desde public (accesible en runtime)
-        const response = await fetch('/tracks/tracks-manifest.json');
+        // Cargar tracks desde API route que escanea el directorio en tiempo de ejecución
+        const response = await fetch('/api/tracks');
         if (!response.ok) {
-          throw new Error(`Failed to load tracks manifest: ${response.status}`);
+          throw new Error(`Failed to load tracks: ${response.status}`);
         }
-        const manifest = await response.json();
-        const { tracks: tracksData } = manifest;
+        const data = await response.json();
+        const { tracks: tracksData } = data;
         const tracksMap = new Map();
 
         // Procesar cada track del manifest
@@ -43,9 +44,12 @@ export const useTracks = () => {
           Object.keys(trackData).forEach(subfolder => {
             const subfolderData = trackData[subfolder];
             
-            // Procesar imágenes
+            // Procesar imágenes - ordenar alfabéticamente por nombre
             if (subfolderData.images && subfolderData.images.length > 0) {
-              track.imagesBySubfolder.set(subfolder, subfolderData.images.map(img => ({
+              const sortedImages = [...subfolderData.images].sort((a, b) => {
+                return a.name.localeCompare(b.name);
+              });
+              track.imagesBySubfolder.set(subfolder, sortedImages.map(img => ({
                 path: img.url,
                 originalPath: img.path,
                 subfolder: subfolder,
