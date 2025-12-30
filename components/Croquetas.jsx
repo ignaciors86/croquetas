@@ -62,6 +62,7 @@ const Croquetas = () => {
   const [showStartButton, setShowStartButton] = useState(false);
   const [wasSelectedFromIntro, setWasSelectedFromIntro] = useState(false);
   const [loadingFadedOut, setLoadingFadedOut] = useState(false);
+  const [pendingTrack, setPendingTrack] = useState(null);
   const wasPlayingBeforeHoldRef = useRef(false);
   const wasSelectedFromIntroRef = useRef(false);
   const startButtonRef = useRef(null);
@@ -418,6 +419,8 @@ const Croquetas = () => {
   // Logging para debug en producción
 
   const handleTrackSelect = (track) => {
+    // Mantener el loading visible durante la navegación
+    setLoadingFadedOut(false);
     setSelectedTrack(track);
     setAudioStarted(false);
     setShowStartButton(false);
@@ -426,8 +429,9 @@ const Croquetas = () => {
     // Guardar en sessionStorage para preservar durante la navegación
     if (typeof window !== 'undefined') {
       sessionStorage.setItem('wasSelectedFromIntro', 'true');
+      // Guardar también que hay un track seleccionado para mantener el loading visible
+      sessionStorage.setItem('pendingTrack', track.id || track.name);
     }
-    setLoadingFadedOut(false);
     const trackIdForUrl = track.id || track.name.toLowerCase().replace(/\s+/g, '-');
     router.push(`/${trackIdForUrl}`);
   };
@@ -662,12 +666,63 @@ const Croquetas = () => {
 
   // Controles de teclado para audio - se manejan dentro de AudioProvider
 
+  // Verificar si hay un track pendiente en sessionStorage (durante navegación)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const pending = sessionStorage.getItem('pendingTrack');
+      if (pending) {
+        setPendingTrack(pending);
+      } else {
+        setPendingTrack(null);
+      }
+    }
+  }, []);
+  
+  // Limpiar pendingTrack cuando no hay track seleccionado y los tracks ya se cargaron
+  useEffect(() => {
+    if (!selectedTrack && !tracksLoading && tracks.length > 0 && pendingTrack) {
+      // Si no hay track seleccionado y los tracks ya se cargaron, limpiar el pendingTrack
+      setPendingTrack(null);
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('pendingTrack');
+      }
+    }
+  }, [selectedTrack, tracksLoading, tracks.length, pendingTrack]);
+  
+  // Calcular progreso global para el loading
+  const globalLoadingProgress = tracksLoading ? 0 : (
+    selectedTrack 
+      ? Math.round((imagesProgress + loadingProgress) / 2)
+      : 0
+  );
+  // Mostrar loading global solo cuando:
+  // - Esté cargando tracks O
+  // - (Hay track seleccionado Y no se hizo fade out Y audio no iniciado)
+  // NO mostrar cuando no hay track seleccionado (URL principal después de cargar tracks)
+  const showGlobalLoading = tracksLoading || (selectedTrack && !loadingFadedOut && !audioStarted);
+  
   return (
     <div className="croquetas" onClick={handleClick}>
-      {tracksLoading && (
-        <div className="image-preloader">
+      {/* Loading global de KITT - siempre visible hasta que todo esté listo */}
+      {/* Este loading está en el div principal para usar el fondo negro */}
+      {showGlobalLoading && (
+        <div className="image-preloader" style={{ 
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          display: 'flex',
+          opacity: 1,
+          zIndex: 5000,
+          background: 'transparent',
+          pointerEvents: 'none'
+        }}>
           <div className="image-preloader__content">
-            <div className="image-preloader__text">Cargando canciones...</div>
+            <KITTLoader 
+              fast={globalLoadingProgress >= 95} 
+              progress={tracksLoading ? 0 : globalLoadingProgress} 
+            />
           </div>
         </div>
       )}
@@ -679,7 +734,7 @@ const Croquetas = () => {
           onStartPlayback={isDirectUri && !wasSelectedFromIntro && selectedTrack ? handleStartPlayback : null}
           selectedTrackId={trackId ? trackId.toLowerCase().replace(/\s+/g, '-') : (selectedTrack ? (selectedTrack.id || selectedTrack.name.toLowerCase().replace(/\s+/g, '-')) : 'croquetas')}
           isDirectUri={isDirectUri}
-          isVisible={!selectedTrack || (isDirectUri && !wasSelectedFromIntro && !audioStarted)}
+          isVisible={!selectedTrack || (isDirectUri && !wasSelectedFromIntro && !audioStarted && loadingFadedOut)}
         />
       )}
       
@@ -887,7 +942,6 @@ const AudioStarter = ({ audioStarted, audioRef, setIsPlaying, isLoaded: external
 };
 
 const UnifiedLoadingIndicator = ({ imagesLoading, imagesProgress, isDirectUri, audioStarted, loadingFadedOut, setLoadingFadedOut, setAudioStarted, selectedTrack, audioRef, isLoaded: audioLoaded, loadingProgress: audioProgress }) => {
-  const loadingRef = useRef(null);
   const fadeoutStartedRef = useRef(false);
   const hasCheckedReadyRef = useRef(false);
   
@@ -924,23 +978,13 @@ const UnifiedLoadingIndicator = ({ imagesLoading, imagesProgress, isDirectUri, a
       fadeoutStartedRef.current = false;
       hasCheckedReadyRef.current = false;
       setLoadingFadedOut(false);
-      if (loadingRef.current) {
-        // Fade-in suave del loading cuando aparece
-        // En móviles, asegurar que el loading sea visible inmediatamente
-        gsap.set(loadingRef.current, { opacity: isMobile ? 1 : 0 });
-        if (!isMobile) {
-          gsap.to(loadingRef.current, {
-            opacity: 1,
-            duration: 0.6,
-            ease: 'power2.out'
-          });
-        }
-      }
+      // El loading se maneja globalmente, no necesitamos animar este ref
     }
-  }, [selectedTrack, setLoadingFadedOut, isMobile]);
+  }, [selectedTrack, setLoadingFadedOut]);
   
   useEffect(() => {
-    if (everythingReady && !fadeoutStartedRef.current && !hasCheckedReadyRef.current && loadingRef.current && !loadingFadedOut) {
+    // Cuando todo está listo, hacer fade out del loading global
+    if (everythingReady && !fadeoutStartedRef.current && !hasCheckedReadyRef.current && !loadingFadedOut) {
       hasCheckedReadyRef.current = true;
       fadeoutStartedRef.current = true;
       
@@ -948,18 +992,7 @@ const UnifiedLoadingIndicator = ({ imagesLoading, imagesProgress, isDirectUri, a
       const fadeOutDelay = isMobile ? 300 : 0;
       
       setTimeout(() => {
-        if (loadingRef.current) {
-          gsap.to(loadingRef.current, {
-            opacity: 0,
-            duration: 0.8,
-            ease: 'power2.out',
-            onComplete: () => {
-              setLoadingFadedOut(true);
-            }
-          });
-        } else {
-          setLoadingFadedOut(true);
-        }
+        setLoadingFadedOut(true);
       }, fadeOutDelay);
     }
   }, [everythingReady, loadingFadedOut, setLoadingFadedOut, isMobile]);
@@ -975,32 +1008,18 @@ const UnifiedLoadingIndicator = ({ imagesLoading, imagesProgress, isDirectUri, a
       const maxWaitTime = isMobile ? 10000 : 15000;
       const minProgress = isMobile ? 30 : 50; // Mínimo progreso requerido
       
-      if (loadingRef.current && !loadingFadedOut && !fadeoutStartedRef.current) {
+      if (!loadingFadedOut && !fadeoutStartedRef.current) {
         const currentProgress = Math.round((imagesProgress + audioProgress) / 2);
         if (currentProgress >= minProgress) {
           console.warn('[UnifiedLoadingIndicator] Timeout de seguridad: forzando fade out del loading y iniciando audio');
           hasCheckedReadyRef.current = true;
           fadeoutStartedRef.current = true;
           
-          if (loadingRef.current) {
-            gsap.to(loadingRef.current, {
-              opacity: 0,
-              duration: 0.8,
-              ease: 'power2.out',
-              onComplete: () => {
-                setLoadingFadedOut(true);
-                // IMPORTANTE: Cuando el loading se quita por timeout, forzar el inicio del audio
-                // Esto asegura que el audio se inicie incluso si everythingReady es false
-                if (!audioStarted) {
-                  setAudioStarted(true);
-                }
-              }
-            });
-          } else {
-            setLoadingFadedOut(true);
-            if (!audioStarted) {
-              setAudioStarted(true);
-            }
+          setLoadingFadedOut(true);
+          // IMPORTANTE: Cuando el loading se quita por timeout, forzar el inicio del audio
+          // Esto asegura que el audio se inicie incluso si everythingReady es false
+          if (!audioStarted) {
+            setAudioStarted(true);
           }
         }
       }
@@ -1009,25 +1028,9 @@ const UnifiedLoadingIndicator = ({ imagesLoading, imagesProgress, isDirectUri, a
     return () => clearTimeout(safetyTimeout);
   }, [selectedTrack, audioStarted, loadingFadedOut, imagesProgress, audioProgress, isMobile, setLoadingFadedOut, setAudioStarted]);
   
-  // En móviles, especialmente Chrome iOS, asegurar que el loading siempre se muestre
-  // incluso si everythingReady es false inicialmente
-  if (audioStarted || loadingFadedOut) {
-    return null;
-  }
-  
-  const combinedProgress = everythingReady ? 100 : Math.round((imagesProgress + audioProgress) / 2);
-  const showFast = combinedProgress >= 95;
-  
-  // En móviles, asegurar que el loading tenga al menos un progreso mínimo visible
-  const displayProgress = isMobile && combinedProgress === 0 ? 5 : combinedProgress;
-  
-  return (
-    <div className="image-preloader" ref={loadingRef}>
-      <div className="image-preloader__content">
-        <KITTLoader fast={showFast} progress={displayProgress} />
-      </div>
-    </div>
-  );
+  // El loading se maneja globalmente en el componente principal
+  // Este componente NO renderiza nada visual, solo maneja la lógica
+  return null;
 };
 
 const UnifiedContentManager = ({ 

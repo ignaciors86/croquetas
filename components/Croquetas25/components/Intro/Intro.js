@@ -289,6 +289,7 @@ const Intro = ({ tracks, onTrackSelect, onStartPlayback = null, selectedTrackId 
       className={MAINCLASS} 
       ref={overlayRef}
       onClick={(e) => e.target === overlayRef.current && e.preventDefault()}
+      style={{ display: isVisible ? 'flex' : 'none' }}
     >
       <div className={`${MAINCLASS}__container`} ref={containerRef}>
         <h2 ref={titleRef} className={`${MAINCLASS}__title`}>Coge una croqueta</h2>
