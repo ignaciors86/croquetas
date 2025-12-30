@@ -13,7 +13,7 @@ const Intro = ({ tracks, onTrackSelect, selectedTrackId = null, isDirectUri = fa
   const containerRef = useRef(null);
   const [croquetasUnlocked, setCroquetasUnlocked] = useState(false);
   const rotationTimelinesRef = useRef([]);
-  const [isPortrait, setIsPortrait] = useState(window.innerHeight > window.innerWidth);
+  const [isPortrait, setIsPortrait] = useState(typeof window !== 'undefined' ? window.innerHeight > window.innerWidth : false);
 
   const memoizedTracks = useMemo(() => tracks, [tracks]);
 
@@ -81,6 +81,7 @@ const Intro = ({ tracks, onTrackSelect, selectedTrackId = null, isDirectUri = fa
   }, [handleTrackSelect]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
     const checkOrientation = () => setIsPortrait(window.innerHeight > window.innerWidth);
     checkOrientation();
     window.addEventListener('resize', checkOrientation);

@@ -27,11 +27,11 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
   const isLastImageRef = useRef(false); // Flag para indicar si la próxima imagen es la última
   
   // Detectar dispositivo móvil (especialmente iPhone)
-  const isMobile = typeof window !== 'undefined' && (
+  const isMobile = typeof window !== 'undefined' && typeof navigator !== 'undefined' && (
     /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
     (window.innerWidth <= 768)
   );
-  const isIOS = typeof window !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  const isIOS = typeof window !== 'undefined' && typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
   
   // Configuración de carga progresiva - optimizada para móviles
   const INITIAL_PRELOAD_COUNT = isMobile ? (isIOS ? 5 : 8) : 20; // Menos imágenes iniciales en móviles

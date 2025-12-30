@@ -228,6 +228,7 @@ const Croquetas = () => {
   const handleClick = async (e) => {
     if (!audioStarted && selectedTrack && showStartButton && startButtonRef.current) {
       // Detectar iOS (especialmente Chrome en iOS)
+      if (typeof window === 'undefined' || typeof navigator === 'undefined') return;
       const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
       const isChromeIOS = isIOS && /CriOS/.test(navigator.userAgent);
       const isSafariIOS = isIOS && !isChromeIOS;
@@ -290,6 +291,7 @@ const Croquetas = () => {
         setIsPlaying(false);
       }
       
+      if (typeof document === 'undefined' || typeof window === 'undefined') return;
       const introOverlay = document.querySelector('.intro');
       if (!introOverlay || window.getComputedStyle(introOverlay).opacity === '0' || introOverlay.style.display === 'none') {
         gsap.globalTimeline.pause();
@@ -347,6 +349,7 @@ const Croquetas = () => {
     }, [resumeEverything, togglePauseResume, shouldIgnoreEvent]);
 
     useEffect(() => {
+      if (typeof document === 'undefined') return;
       const container = document.querySelector('.croquetas');
       if (!container) return;
       container.addEventListener('mousedown', handleStart);

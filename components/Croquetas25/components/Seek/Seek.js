@@ -12,6 +12,7 @@ const Seek = ({ squares, seekToImagePosition, selectedTrack, audioRef, currentAu
 
   // Calcular duraciones de los audios
   useEffect(() => {
+    if (typeof window === 'undefined' || typeof Audio === 'undefined') return;
     if (!audioSrcs || audioSrcs.length === 0) {
       setAudioDurations([]);
       return;

@@ -40,6 +40,11 @@ const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef }) => {
     let source = null;
     
     try {
+      if (typeof window === 'undefined' || (!window.AudioContext && !window.webkitAudioContext)) {
+        console.warn('[AudioAnalyzer] AudioContext not available in this environment');
+        setIsInitialized(false);
+        return;
+      }
       audioContext = new (window.AudioContext || window.webkitAudioContext)();
       analyser = audioContext.createAnalyser();
       analyser.fftSize = 2048;
