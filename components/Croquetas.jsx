@@ -700,7 +700,7 @@ const Croquetas = () => {
   // - (Hay track seleccionado Y no se hizo fade out Y audio no iniciado)
   // NO mostrar cuando no hay track seleccionado (URL principal después de cargar tracks)
   const showGlobalLoading = tracksLoading || (selectedTrack && !loadingFadedOut && !audioStarted);
-  
+
   return (
     <div className="croquetas" onClick={handleClick}>
       {/* Loading global de KITT - siempre visible hasta que todo esté listo */}
@@ -719,10 +719,10 @@ const Croquetas = () => {
           pointerEvents: 'none'
         }}>
           <div className="image-preloader__content">
-            <KITTLoader 
+          <KITTLoader 
               fast={globalLoadingProgress >= 95} 
               progress={tracksLoading ? 0 : globalLoadingProgress} 
-            />
+          />
           </div>
         </div>
       )}
@@ -732,9 +732,9 @@ const Croquetas = () => {
           tracks={tracks} 
           onTrackSelect={handleTrackSelect}
           onStartPlayback={isDirectUri && !wasSelectedFromIntro && selectedTrack ? handleStartPlayback : null}
-          selectedTrackId={trackId ? trackId.toLowerCase().replace(/\s+/g, '-') : (selectedTrack ? (selectedTrack.id || selectedTrack.name.toLowerCase().replace(/\s+/g, '-')) : 'croquetas')}
+            selectedTrackId={trackId ? trackId.toLowerCase().replace(/\s+/g, '-') : (selectedTrack ? (selectedTrack.id || selectedTrack.name.toLowerCase().replace(/\s+/g, '-')) : 'croquetas')}
           isDirectUri={isDirectUri}
-          isVisible={!selectedTrack || (isDirectUri && !wasSelectedFromIntro && !audioStarted && loadingFadedOut)}
+          isVisible={!selectedTrack || (isDirectUri && !wasSelectedFromIntro && !audioStarted)}
         />
       )}
       
@@ -1030,7 +1030,7 @@ const UnifiedLoadingIndicator = ({ imagesLoading, imagesProgress, isDirectUri, a
   
   // El loading se maneja globalmente en el componente principal
   // Este componente NO renderiza nada visual, solo maneja la lógica
-  return null;
+    return null;
 };
 
 const UnifiedContentManager = ({ 
