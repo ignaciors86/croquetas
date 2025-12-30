@@ -42,7 +42,6 @@ const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef, currentAudioInd
     // Reutilizar la conexión existente - el MediaElementSourceNode está conectado al elemento,
     // no al archivo específico, por lo que funciona cuando cambia el src
     if (audio.__audioAnalyzerSourceNode) {
-      console.log('[AudioAnalyzer] Audio ya está conectado, reutilizando conexión existente');
       // Reutilizar el AudioContext existente si está disponible
       if (audio.__audioAnalyzerContext) {
         audioContextRef.current = audio.__audioAnalyzerContext;
@@ -60,7 +59,6 @@ const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef, currentAudioInd
         // Si el AudioContext está suspendido, resumirlo
         if (audioContextRef.current.state === 'suspended') {
           audioContextRef.current.resume().then(() => {
-            console.log('[AudioAnalyzer] AudioContext resumido después de cambio de audio');
           }).catch(err => {
             console.warn('[AudioAnalyzer] Error resumiendo AudioContext:', err);
           });
@@ -112,19 +110,16 @@ const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef, currentAudioInd
       if (audioContext.state === 'suspended') {
         audioContext.resume().then(() => {
           updateIsInitialized(true);
-          console.log('[AudioAnalyzer] AudioContext creado y resumido');
         }).catch(() => {
           updateIsInitialized(false);
         });
       } else {
         updateIsInitialized(true);
-        console.log('[AudioAnalyzer] AudioContext creado');
       }
     } catch (error) {
       console.warn('[AudioAnalyzer] Error setting up AudioContext:', error);
       // Si el error es que ya está conectado, intentar reutilizar
       if (error.message.includes('already connected')) {
-        console.log('[AudioAnalyzer] Audio ya conectado, intentando reutilizar conexión existente');
         if (audio.__audioAnalyzerContext && audio.__audioAnalyzerAnalyser) {
           audioContextRef.current = audio.__audioAnalyzerContext;
           analyserRef.current = audio.__audioAnalyzerAnalyser;
@@ -169,11 +164,8 @@ const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef, currentAudioInd
   };
 
   useEffect(() => {
-    console.log(`[AudioAnalyzer] useEffect triggered | analyserRef.current exists: ${!!analyserRef.current} | dataArrayRef.current exists: ${!!dataArrayRef.current} | isInitialized: ${isInitialized} | onBeat exists: ${!!onBeat} | currentAudioIndex: ${currentAudioIndex} | timestamp: ${Date.now()}`);
-    
     // Si cambió el audio, limpiar los historiales para empezar con datos frescos
     if (lastAudioIndexRef.current !== null && lastAudioIndexRef.current !== currentAudioIndex) {
-      console.log(`[AudioAnalyzer] Audio cambió de ${lastAudioIndexRef.current} a ${currentAudioIndex}, limpiando historiales`);
       energyHistoryRef.current = [];
       voiceHistoryRef.current = [];
       trebleHistoryRef.current = [];
@@ -187,7 +179,6 @@ const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef, currentAudioInd
     
     // Esperar a que los refs estén disponibles y el audio esté realmente funcionando
     if (!isInitialized) {
-      console.log(`[AudioAnalyzer] Not initialized yet, waiting...`);
       return;
     }
 
@@ -207,17 +198,14 @@ const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef, currentAudioInd
     const audio = audioRef?.current;
     
     if (audioContext && audioContext.state !== 'running') {
-      console.log(`[AudioAnalyzer] AudioContext is ${audioContext.state}, waiting for it to be running...`);
       // Intentar resumir el AudioContext
       audioContext.resume().then(() => {
-        console.log(`[AudioAnalyzer] AudioContext resumed, state: ${audioContext.state}`);
       }).catch(err => {
         console.error(`[AudioAnalyzer] Error resuming AudioContext:`, err);
       });
       return;
     }
 
-    console.log(`[AudioAnalyzer] Starting analysis loop | analyser.fftSize: ${analyserRef.current.fftSize} | frequencyBinCount: ${analyserRef.current.frequencyBinCount} | dataArray.length: ${dataArrayRef.current.length}`);
     let animationFrameId;
     let waitForAudioReady = false;
 
@@ -253,7 +241,6 @@ const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef, currentAudioInd
       if (currentAudio && (currentAudio.paused || currentAudio.readyState < 3)) {
         // El audio no está listo todavía, pero continuamos el loop para esperar
         if (frameCount % 60 === 0) {
-          console.log(`[AudioAnalyzer] Waiting for audio to be ready | paused: ${currentAudio.paused} | readyState: ${currentAudio.readyState}`);
         }
         animationFrameId = requestAnimationFrame(analyze);
         return;
@@ -261,13 +248,11 @@ const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef, currentAudioInd
       
       // Si estábamos esperando y ahora el audio está listo, loguear
       if (waitForAudioReady && currentAudio && !currentAudio.paused && currentAudio.readyState >= 3) {
-        console.log(`[AudioAnalyzer] Audio is now ready, starting analysis | readyState: ${currentAudio.readyState}`);
         waitForAudioReady = false;
       }
       
       frameCount++;
       if (frameCount % 60 === 0) {
-        console.log(`[AudioAnalyzer] Analysis running | frame: ${frameCount} | analyser exists: ${!!analyserRef.current} | dataArray exists: ${!!dataArrayRef.current} | audio readyState: ${currentAudio?.readyState} | paused: ${currentAudio?.paused} | timestamp: ${Date.now()}`);
       }
       
       analyserRef.current.getByteFrequencyData(dataArrayRef.current);
@@ -401,11 +386,9 @@ const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef, currentAudioInd
       
       if (voiceDetected) {
         lastVoiceTimeRef.current = now;
-        console.log(`[AudioAnalyzer] Voice detected | intensity: ${normalizedVolume} | voiceEnergy: ${voiceEnergy} | onVoice exists: ${!!onVoice}`);
         if (onVoice) {
           try {
             onVoice(normalizedVolume, voiceEnergy);
-            console.log(`[AudioAnalyzer] onVoice called successfully`);
           } catch (error) {
             console.error(`[AudioAnalyzer] onVoice error: ${error.message} | stack: ${error.stack}`);
           }

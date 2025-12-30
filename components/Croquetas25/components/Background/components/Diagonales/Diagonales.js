@@ -232,7 +232,6 @@ const Diagonales = ({ squares, analyserRef, dataArrayRef, isInitialized, onVoice
     
     // Siempre actualizar el callback en el ref externo cuando cambia el ref
     onVoiceCallbackRef.current = voiceCallbackHandlerRef.current;
-    console.log('[Diagonales] Callback registrado en onVoiceCallbackRef');
   }, [onVoiceCallbackRef]);
 
   // Inicializar rotación de todas las diagonales - se ejecuta cuando cambian las diagonales

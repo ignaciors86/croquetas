@@ -109,7 +109,6 @@ const Croquetas = () => {
     
     // Solo seleccionar si el track encontrado es diferente al actual
     if (foundTrack && (!selectedTrack || selectedTrack.id !== foundTrack.id)) {
-      console.log(`[Croquetas] Track encontrado desde URL: ${foundTrack.name}`);
       setSelectedTrack(foundTrack);
       // Preservar wasSelectedFromIntro si fue establecido desde el Intro
       // Solo establecerlo a false si no fue seleccionado desde el Intro (acceso directo a URL)
@@ -179,18 +178,18 @@ const Croquetas = () => {
   }, [router]);
   
   // Handler simple para pausar audio
-  useEffect(() => {
-    handleAllCompleteRef.current = async () => {
-      console.log('[AllCompleteHandler] Pausando audio antes de volver a home');
+    useEffect(() => {
+      handleAllCompleteRef.current = async () => {
+        console.log('[AllCompleteHandler] Pausando audio antes de volver a home');
       if (audioRef?.current && !audioRef.current.paused) {
         audioRef.current.pause();
         setIsPlaying(false);
-      }
-    };
-    
-    return () => {
-      handleAllCompleteRef.current = null;
-    };
+        }
+      };
+      
+      return () => {
+        handleAllCompleteRef.current = null;
+      };
   }, []);
   
   const { isLoading: imagesLoading, preloadProgress: imagesProgress, seekToImagePosition } = useGallery(selectedTrack, handleSubfolderComplete, handleAllComplete);
@@ -417,15 +416,6 @@ const Croquetas = () => {
   }, [currentAudioSrc, currentAudioIndex, audioSrcs, performCrossfade]);
   
   // Logging para debug en producción
-  useEffect(() => {
-    if (selectedTrack && audioSrcs.length > 0) {
-      console.log(`[Croquetas] Track seleccionado: ${selectedTrack.name}`);
-      console.log(`[Croquetas] AudioSrcs:`, audioSrcs);
-      audioSrcs.forEach((src, idx) => {
-        console.log(`[Croquetas] Audio ${idx}: ${src} (tipo: ${typeof src})`);
-      });
-    }
-  }, [selectedTrack, audioSrcs]);
 
   const handleTrackSelect = (track) => {
     setSelectedTrack(track);
@@ -442,10 +432,16 @@ const Croquetas = () => {
     router.push(`/${trackIdForUrl}`);
   };
 
-  const handleClick = async (e) => {
-    if (!audioStarted && selectedTrack && showStartButton && startButtonRef.current) {
+  const handleStartPlayback = useCallback(async (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    
+    if (!selectedTrack || audioStarted) return;
+    
       // Detectar iOS (especialmente Chrome en iOS)
-      if (typeof window === 'undefined' || typeof navigator === 'undefined') return;
+    if (typeof window === 'undefined' || typeof navigator === 'undefined') return;
       const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
       const isChromeIOS = isIOS && /CriOS/.test(navigator.userAgent);
       const isSafariIOS = isIOS && !isChromeIOS;
@@ -453,24 +449,49 @@ const Croquetas = () => {
       // En iOS, necesitamos iniciar el audio DIRECTAMENTE desde el click (no async)
       // iOS requiere que play() se llame sincrónicamente desde el evento de usuario
       if (isIOS || isChromeIOS || isSafariIOS) {
-        // Intentar reproducir el audio directamente desde el elemento
-        // Esto DEBE hacerse dentro del handler de click, no en un callback
-        try {
-          if (audioRef.current && audioRef.current.paused) {
-            const playPromise = audioRef.current.play();
-            if (playPromise !== undefined) {
-              playPromise.then(() => {
-                console.log('[Croquetas] Audio iniciado directamente desde click en iOS');
-                setIsPlaying(true);
-              }).catch(playErr => {
-                console.warn('[Croquetas] Error iniciando audio directamente:', playErr);
-              });
+      try {
+        if (audioRef.current && audioRef.current.paused) {
+          const playPromise = audioRef.current.play();
+              if (playPromise !== undefined) {
+                playPromise.then(() => {
+              console.log('[Croquetas] Audio iniciado directamente desde click en iOS');
+              setIsPlaying(true);
+                }).catch(playErr => {
+              console.warn('[Croquetas] Error iniciando audio directamente:', playErr);
+                });
             }
           }
         } catch (playErr) {
-          console.warn('[Croquetas] Error iniciando audio directamente:', playErr);
-        }
+        console.warn('[Croquetas] Error iniciando audio directamente:', playErr);
       }
+    } else {
+      // Para otros navegadores, intentar iniciar el audio
+      try {
+        if (audioRef.current && audioRef.current.paused) {
+          const playPromise = audioRef.current.play();
+          if (playPromise !== undefined) {
+            playPromise.then(() => {
+              console.log('[Croquetas] Audio iniciado desde click');
+              setIsPlaying(true);
+            }).catch(playErr => {
+              console.warn('[Croquetas] Error iniciando audio:', playErr);
+            });
+          } else {
+            setIsPlaying(true);
+          }
+        }
+      } catch (playErr) {
+        console.warn('[Croquetas] Error iniciando audio:', playErr);
+      }
+    }
+    
+    setShowStartButton(false);
+    setAudioStarted(true);
+  }, [selectedTrack, audioStarted, audioRef, setIsPlaying]);
+
+  const handleClick = async (e) => {
+    if (!audioStarted && selectedTrack && showStartButton && startButtonRef.current) {
+      await handleStartPlayback(e);
       
       gsap.to(startButtonRef.current, {
         opacity: 0,
@@ -655,28 +676,29 @@ const Croquetas = () => {
         <Intro 
           tracks={tracks} 
           onTrackSelect={handleTrackSelect}
-          selectedTrackId={trackId ? trackId.toLowerCase().replace(/\s+/g, '-') : 'croquetas'}
+          onStartPlayback={isDirectUri && !wasSelectedFromIntro && selectedTrack ? handleStartPlayback : null}
+          selectedTrackId={trackId ? trackId.toLowerCase().replace(/\s+/g, '-') : (selectedTrack ? (selectedTrack.id || selectedTrack.name.toLowerCase().replace(/\s+/g, '-')) : 'croquetas')}
           isDirectUri={isDirectUri}
-          isVisible={!selectedTrack}
+          isVisible={!selectedTrack || (isDirectUri && !wasSelectedFromIntro && !audioStarted)}
         />
       )}
       
       {/* Background siempre visible para mostrar diagonales */}
       {selectedTrack && audioSrcs.length > 0 ? (
         <>
-          <BackgroundWrapper 
+        <BackgroundWrapper 
             onTriggerCallbackRef={audioStarted ? triggerCallbackRef : null} 
             onVoiceCallbackRef={audioStarted ? voiceCallbackRef : null}
             selectedTrack={audioStarted ? selectedTrack : null}
             showOnlyDiagonales={!audioStarted}
-            onAllComplete={handleAllComplete}
-            audioRef={audioRef}
-            isPlaying={isPlaying}
+          onAllComplete={handleAllComplete}
+          audioRef={audioRef}
+          isPlaying={isPlaying}
             currentAudioIndex={audioStarted ? currentAudioIndex : null}
-            analyserRef={analyserRef}
-            dataArrayRef={dataArrayRef}
-            isAudioAnalyzerInitialized={isAudioAnalyzerInitialized}
-          />
+          analyserRef={analyserRef}
+          dataArrayRef={dataArrayRef}
+          isAudioAnalyzerInitialized={isAudioAnalyzerInitialized}
+        />
           <UnifiedLoadingIndicator 
             imagesLoading={imagesLoading}
             imagesProgress={imagesProgress}
@@ -698,7 +720,7 @@ const Croquetas = () => {
             setAudioStarted={setAudioStarted}
             showStartButton={showStartButton}
             setShowStartButton={setShowStartButton}
-            isDirectUri={isDirectUri}
+          isDirectUri={isDirectUri}
             wasSelectedFromIntro={wasSelectedFromIntro}
             startButtonRef={startButtonRef}
             handleClick={handleClick}
@@ -810,8 +832,8 @@ const AudioStarter = ({ audioStarted, audioRef, setIsPlaying, isLoaded: external
     }
 
     if (!audioRef?.current) return;
-    const audio = audioRef.current;
-    
+      const audio = audioRef.current;
+      
     const tryPlay = async () => {
       const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
       const minReadyState = isIOS ? 1 : 2;
@@ -822,31 +844,28 @@ const AudioStarter = ({ audioStarted, audioRef, setIsPlaying, isLoaded: external
       
       // Verificar readyState directamente
       if (audio.readyState >= minReadyState || isLoaded) {
-        try {
+          try {
           // Asegurar que el volumen esté al máximo
-          audio.volume = 1.0;
-          
+            audio.volume = 1.0;
+            
           // Si el audio está conectado a un AudioContext, asegurarse de que el AudioContext esté resumido
-          if (isConnectedToAudioContext) {
-            const audioContext = audio.__audioAnalyzerContext;
-            if (audioContext && audioContext.state === 'suspended') {
-              await audioContext.resume();
-              console.log('[AudioStarter] AudioContext resumido antes de reproducir');
+            if (isConnectedToAudioContext) {
+              const audioContext = audio.__audioAnalyzerContext;
+                  if (audioContext && audioContext.state === 'suspended') {
+                    await audioContext.resume();
+                  }
             }
-          }
-          
-          const playPromise = audio.play();
-          if (playPromise !== undefined) {
-            await playPromise;
-            setIsPlaying(true);
-            console.log('[AudioStarter] Audio reproducido, readyState:', audio.readyState, 'volume:', audio.volume, 'paused:', audio.paused, 'currentTime:', audio.currentTime, 'connectedToAudioContext:', isConnectedToAudioContext);
-          } else {
-            setIsPlaying(true);
-            console.log('[AudioStarter] Audio reproducido (sin promise), readyState:', audio.readyState);
-          }
-        } catch (error) {
-          console.error('[AudioStarter] Error playing audio:', error);
-          hasAttemptedPlayRef.current = false;
+            
+            const playPromise = audio.play();
+            if (playPromise !== undefined) {
+              await playPromise;
+              setIsPlaying(true);
+            } else {
+              setIsPlaying(true);
+            }
+          } catch (error) {
+            console.error('[AudioStarter] Error playing audio:', error);
+              hasAttemptedPlayRef.current = false;
           // Reintentar después de un delay
           if (audioStarted) {
             setTimeout(tryPlay, 200);
@@ -854,7 +873,6 @@ const AudioStarter = ({ audioStarted, audioRef, setIsPlaying, isLoaded: external
         }
       } else if (audioStarted) {
         // Esperar a que el audio esté listo
-        console.log('[AudioStarter] Esperando a que el audio esté listo, readyState:', audio.readyState);
         setTimeout(tryPlay, 100);
       }
     };
@@ -900,22 +918,6 @@ const UnifiedLoadingIndicator = ({ imagesLoading, imagesProgress, isDirectUri, a
   
   const everythingReady = imagesReady && audioReady;
   
-  // Debug logging
-  useEffect(() => {
-    console.log('[UnifiedLoadingIndicator] Estado:', {
-      imagesLoading,
-      imagesProgress,
-      audioLoaded,
-      audioHasMetadata: audioRef?.current?.readyState >= minReadyState,
-      audioReadyState: audioRef?.current?.readyState,
-      audioProgress,
-      everythingReady,
-      isMobile,
-      isIOS,
-      isChromeIOS,
-      isSafariIOS
-    });
-  }, [imagesLoading, imagesProgress, audioLoaded, audioProgress, everythingReady, audioRef, minReadyState, isMobile, isIOS, isChromeIOS, isSafariIOS]);
   
   useEffect(() => {
     if (selectedTrack) {
@@ -946,14 +948,18 @@ const UnifiedLoadingIndicator = ({ imagesLoading, imagesProgress, isDirectUri, a
       const fadeOutDelay = isMobile ? 300 : 0;
       
       setTimeout(() => {
-        gsap.to(loadingRef.current, {
-          opacity: 0,
-          duration: 0.8,
-          ease: 'power2.out',
-          onComplete: () => {
-            setLoadingFadedOut(true);
-          }
-        });
+        if (loadingRef.current) {
+          gsap.to(loadingRef.current, {
+            opacity: 0,
+            duration: 0.8,
+            ease: 'power2.out',
+            onComplete: () => {
+              setLoadingFadedOut(true);
+            }
+          });
+        } else {
+          setLoadingFadedOut(true);
+        }
       }, fadeOutDelay);
     }
   }, [everythingReady, loadingFadedOut, setLoadingFadedOut, isMobile]);
@@ -976,20 +982,26 @@ const UnifiedLoadingIndicator = ({ imagesLoading, imagesProgress, isDirectUri, a
           hasCheckedReadyRef.current = true;
           fadeoutStartedRef.current = true;
           
-          gsap.to(loadingRef.current, {
-            opacity: 0,
-            duration: 0.8,
-            ease: 'power2.out',
-            onComplete: () => {
-              setLoadingFadedOut(true);
-              // IMPORTANTE: Cuando el loading se quita por timeout, forzar el inicio del audio
-              // Esto asegura que el audio se inicie incluso si everythingReady es false
-              if (!audioStarted) {
-                console.log('[UnifiedLoadingIndicator] Iniciando audio después de timeout de seguridad');
-                setAudioStarted(true);
+          if (loadingRef.current) {
+            gsap.to(loadingRef.current, {
+              opacity: 0,
+              duration: 0.8,
+              ease: 'power2.out',
+              onComplete: () => {
+                setLoadingFadedOut(true);
+                // IMPORTANTE: Cuando el loading se quita por timeout, forzar el inicio del audio
+                // Esto asegura que el audio se inicie incluso si everythingReady es false
+                if (!audioStarted) {
+                  setAudioStarted(true);
+                }
               }
+            });
+          } else {
+            setLoadingFadedOut(true);
+            if (!audioStarted) {
+              setAudioStarted(true);
             }
-          });
+          }
         }
       }
     }, isMobile ? 10000 : 15000);
@@ -1066,10 +1078,13 @@ const UnifiedContentManager = ({
     if (!everythingReady || !loadingFadedOut) return;
     
     if (isDirectUri && !wasSelectedFromIntro) {
-      if (!showStartButton && !audioStarted) {
-        setShowStartButton(true);
+      // Acceso directo por URI: no mostrar showStartButton porque el Intro ya muestra la croqueta activa
+      if (showStartButton) {
+        setShowStartButton(false);
       }
+      // No iniciar automáticamente, esperar a que el usuario haga clic en la croqueta activa del Intro
     } else {
+      // Seleccionado desde Intro: iniciar automáticamente
       if (showStartButton) {
         setShowStartButton(false);
       }
@@ -1097,7 +1112,13 @@ const UnifiedContentManager = ({
     buttonAnimationStartedRef.current = false;
   }, [selectedTrack]);
   
-  if (!(isDirectUri && !wasSelectedFromIntro && everythingReady && loadingFadedOut && showStartButton && !audioStarted)) {
+  // No mostrar cuando es acceso directo por URI porque el Intro ya muestra la croqueta activa
+  // Este componente solo se muestra en casos especiales donde no hay Intro visible
+  if (isDirectUri && !wasSelectedFromIntro) {
+    return null;
+  }
+  
+  if (!(everythingReady && loadingFadedOut && showStartButton && !audioStarted)) {
     return null;
   }
   
@@ -1318,29 +1339,29 @@ const GuionManager = ({ selectedTrack, typewriterInstanceRef, isPausedByHold, au
     };
     
     const determineAndLoadGuion = async () => {
-      // Priorizar guión de la raíz
+    // Priorizar guión de la raíz
       const rootGuionPaths = selectedTrack.guionesBySubfolder['__root__'];
       if (rootGuionPaths && Array.isArray(rootGuionPaths) && rootGuionPaths.length > 0) {
         const rootGuion = await loadGuion(rootGuionPaths[0]);
-        if (rootGuion && rootGuion.textos) {
+    if (rootGuion && rootGuion.textos) {
           setCurrentGuion(rootGuion);
           return;
         }
-      }
-      
-      // Si no hay guión en la raíz, usar el de la subcarpeta actual
-      if (currentSubfolder) {
+    }
+    
+    // Si no hay guión en la raíz, usar el de la subcarpeta actual
+    if (currentSubfolder) {
         const subfolderGuionPaths = selectedTrack.guionesBySubfolder[currentSubfolder];
         if (subfolderGuionPaths && Array.isArray(subfolderGuionPaths) && subfolderGuionPaths.length > 0) {
           const subfolderGuion = await loadGuion(subfolderGuionPaths[0]);
-          if (subfolderGuion && subfolderGuion.textos) {
+      if (subfolderGuion && subfolderGuion.textos) {
             setCurrentGuion(subfolderGuion);
             return;
           }
-        }
       }
-      
-      // Fallback al guión general del track
+    }
+    
+    // Fallback al guión general del track
       if (selectedTrack.guion) {
         const fallbackGuion = await loadGuion(selectedTrack.guion);
         if (fallbackGuion && fallbackGuion.textos) {
@@ -1356,22 +1377,7 @@ const GuionManager = ({ selectedTrack, typewriterInstanceRef, isPausedByHold, au
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTrack, currentSubfolder]);
   
-  // Debug logging
-  useEffect(() => {
-    console.log('[GuionManager] Estado:', {
-      selectedTrack: selectedTrack?.name,
-      currentSubfolder,
-      currentGuion: currentGuion ? {
-        hasTextos: !!currentGuion.textos,
-        textosLength: currentGuion.textos?.length
-      } : null,
-      currentAudioIndex,
-      guionesBySubfolder: selectedTrack?.guionesBySubfolder
-    });
-  }, [selectedTrack, currentSubfolder, currentGuion, currentAudioIndex]);
-  
   if (!currentGuion || !currentGuion.textos) {
-    console.log('[GuionManager] No hay guión o textos, retornando null');
     return null;
   }
   
@@ -1379,7 +1385,7 @@ const GuionManager = ({ selectedTrack, typewriterInstanceRef, isPausedByHold, au
     <PromptWrapper 
       textos={currentGuion.textos} 
       typewriterInstanceRef={typewriterInstanceRef} 
-      isPausedByHold={isPausedByHold}
+      isPausedByHold={isPausedByHold} 
       audioRef={audioRef}
       analyserRef={analyserRef}
     />
@@ -1390,22 +1396,9 @@ const PromptWrapper = ({ textos, typewriterInstanceRef, isPausedByHold, audioRef
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   
-  // Debug logging
-  useEffect(() => {
-    console.log('[PromptWrapper] Estado:', {
-      textosLength: textos?.length,
-      textos: textos,
-      currentTime,
-      duration,
-      hasAudioRef: !!audioRef?.current,
-      hasAnalyserRef: !!analyserRef?.current,
-      isPausedByHold
-    });
-  }, [textos, currentTime, duration, audioRef, analyserRef, isPausedByHold]);
   
   useEffect(() => {
     if (!audioRef?.current) {
-      console.log('[PromptWrapper] No audioRef.current, skipping time updates');
       return;
     }
     

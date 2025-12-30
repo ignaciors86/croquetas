@@ -73,15 +73,6 @@ const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstance
   useEffect(() => {
     const textIndex = getCurrentTextIndex();
     
-    // Debug logging
-    console.log('[Prompt] getCurrentTextIndex result:', {
-      textIndex,
-      currentTime,
-      duration,
-      textosLength: textos?.length,
-      currentTextIndexRef: currentTextIndexRef.current
-    });
-    
     if (textIndex !== currentTextIndexRef.current) {
       currentTextIndexRef.current = textIndex;
       setCurrentTextIndex(textIndex);
@@ -119,21 +110,6 @@ const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstance
     const isFirstText = lastShownTextIndexRef.current === -1 && currentTextIndex >= 0;
     const noDurationYet = !duration || duration === 0;
     
-    // Debug logging
-    console.log('[Prompt] Visibility check:', {
-      hasText,
-      hasEnded,
-      textIndexChanged,
-      isFirstText,
-      noDurationYet,
-      currentTextIndex,
-      textosLength: textos.length,
-      duration,
-      currentTime,
-      isVisible,
-      isTyping
-    });
-    
     // Si tenemos textos, mostrar el prompt (especialmente si no hay duración aún o es el primer texto)
     const shouldShow = hasText && !hasEnded && (textIndexChanged || isFirstText || (noDurationYet && textos.length > 0));
     
@@ -142,7 +118,6 @@ const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstance
       setIsIntentionallyHidden(false);
       
       if (promptRef.current) {
-        console.log('[Prompt] Making prompt visible');
         const fadeInProps = { opacity: 1, y: 0, duration: 0.4, ease: 'power2.out' };
         gsap.to(promptRef.current, fadeInProps);
         setIsVisible(true);
@@ -158,7 +133,6 @@ const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstance
 
   useEffect(() => {
     if (promptRef.current) {
-      console.log('[Prompt] Setting initial opacity to 0');
       gsap.set(promptRef.current, { opacity: 0, y: 20 });
     }
   }, []);
@@ -166,7 +140,6 @@ const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstance
   // Forzar visibilidad inicial si hay textos pero aún no hay duración
   useEffect(() => {
     if (textos && textos.length > 0 && (!duration || duration === 0) && !isPaused && promptRef.current && !isVisible) {
-      console.log('[Prompt] Forcing initial visibility (no duration yet)');
       const fadeInProps = { opacity: 1, y: 0, duration: 0.4, ease: 'power2.out' };
       gsap.to(promptRef.current, fadeInProps);
       setIsVisible(true);
@@ -177,19 +150,7 @@ const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstance
     }
   }, [textos, duration, isPaused, isVisible]);
 
-  // Debug logging al inicio del render
-  console.log('[Prompt] Render check:', {
-    textosLength: textos?.length,
-    textos: textos,
-    currentTextIndex,
-    duration,
-    currentTime,
-    isPaused,
-    analyser: !!analyser
-  });
-
   if (!textos || textos.length === 0) {
-    console.log('[Prompt] No textos, returning null');
     return null;
   }
 
@@ -202,14 +163,7 @@ const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstance
     ? textos[effectiveIndex] 
     : '';
 
-  console.log('[Prompt] Text to show:', {
-    effectiveIndex,
-    textToShow,
-    hasText: !!textToShow
-  });
-
   if (!textToShow) {
-    console.log('[Prompt] No textToShow, returning null');
     return null;
   }
 

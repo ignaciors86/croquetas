@@ -5,7 +5,7 @@ import './Intro.scss';
 
 const MAINCLASS = 'intro';
 
-const Intro = ({ tracks, onTrackSelect, selectedTrackId = null, isDirectUri = false, isVisible = true }) => {
+const Intro = ({ tracks, onTrackSelect, onStartPlayback = null, selectedTrackId = null, isDirectUri = false, isVisible = true }) => {
   const titleRef = useRef(null);
   const buttonsRef = useRef([]);
   const [isAnimating, setIsAnimating] = useState(false);
@@ -77,8 +77,13 @@ const Intro = ({ tracks, onTrackSelect, selectedTrackId = null, isDirectUri = fa
   const handleCroquetaClick = useCallback((track, index) => (e) => {
     e.stopPropagation();
     e.preventDefault();
-    handleTrackSelect(track, index);
-  }, [handleTrackSelect]);
+    // Si hay onStartPlayback y es la croqueta activa (main) en acceso directo, usar onStartPlayback
+    if (onStartPlayback && isDirectUri && isMainCroqueta(track)) {
+      onStartPlayback(e);
+    } else {
+      handleTrackSelect(track, index);
+    }
+  }, [handleTrackSelect, onStartPlayback, isDirectUri, isMainCroqueta]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
