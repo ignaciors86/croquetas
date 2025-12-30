@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams, useParams } from 'next/navigation';
 import { gsap } from 'gsap';
 import './Croquetas.scss';
 import Background from './Croquetas25/components/Background/Background';
@@ -54,8 +54,8 @@ const LoadingProgressHandler = ({ onTriggerCallbackRef, audioStarted, audioRef }
 
 const Croquetas = () => {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const trackId = searchParams?.get('trackId') || null;
+  const params = useParams();
+  const trackId = params?.trackId ? decodeURIComponent(params.trackId) : null;
   const [audioStarted, setAudioStarted] = useState(false);
   const [selectedTrack, setSelectedTrack] = useState(null);
   const [isPausedByHold, setIsPausedByHold] = useState(false);
@@ -63,6 +63,7 @@ const Croquetas = () => {
   const [wasSelectedFromIntro, setWasSelectedFromIntro] = useState(false);
   const [loadingFadedOut, setLoadingFadedOut] = useState(false);
   const wasPlayingBeforeHoldRef = useRef(false);
+  const wasSelectedFromIntroRef = useRef(false);
   const startButtonRef = useRef(null);
   const triggerCallbackRef = useRef(null);
   const voiceCallbackRef = useRef(null);
@@ -76,6 +77,45 @@ const Croquetas = () => {
   const [loadingProgress, setLoadingProgress] = useState(0);
   
   const { tracks, isLoading: tracksLoading } = useTracks();
+  
+  // Restaurar wasSelectedFromIntro desde sessionStorage al montar
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem('wasSelectedFromIntro');
+      if (saved === 'true') {
+        setWasSelectedFromIntro(true);
+        wasSelectedFromIntroRef.current = true;
+        // Limpiar después de leer
+        sessionStorage.removeItem('wasSelectedFromIntro');
+      }
+    }
+  }, []);
+
+  // Seleccionar automáticamente el track cuando hay un trackId en la URL
+  useEffect(() => {
+    if (!trackId || tracksLoading || tracks.length === 0) return;
+    
+    const normalizedTrackId = trackId.toLowerCase().replace(/\s+/g, '-');
+    const foundTrack = tracks.find(track => {
+      const normalizedId = (track.id || track.name.toLowerCase().replace(/\s+/g, '-'));
+      return normalizedId === normalizedTrackId;
+    });
+    
+    // Solo seleccionar si el track encontrado es diferente al actual
+    if (foundTrack && (!selectedTrack || selectedTrack.id !== foundTrack.id)) {
+      console.log(`[Croquetas] Track encontrado desde URL: ${foundTrack.name}`);
+      setSelectedTrack(foundTrack);
+      // Preservar wasSelectedFromIntro si fue establecido desde el Intro
+      // Solo establecerlo a false si no fue seleccionado desde el Intro (acceso directo a URL)
+      if (!wasSelectedFromIntroRef.current && !wasSelectedFromIntro) {
+        setWasSelectedFromIntro(false);
+      } else if (wasSelectedFromIntroRef.current || wasSelectedFromIntro) {
+        // Si el ref o el estado indican que fue seleccionado desde Intro, mantener el estado
+        setWasSelectedFromIntro(true);
+        wasSelectedFromIntroRef.current = true;
+      }
+    }
+  }, [trackId, tracks, tracksLoading, selectedTrack, wasSelectedFromIntro]);
   
   // Callback para cuando se completa una subcarpeta - cambiar al siguiente audio
   const handleSubfolderComplete = useCallback((completedSubfolder) => {
@@ -123,6 +163,7 @@ const Croquetas = () => {
     setSelectedTrack(null);
     setShowStartButton(false);
     setWasSelectedFromIntro(false);
+    wasSelectedFromIntroRef.current = false; // Resetear el ref también
     setLoadingFadedOut(false);
     
     // Navegar inmediatamente (igual que el botón de volver)
@@ -191,18 +232,41 @@ const Croquetas = () => {
     const handlePlay = () => setIsPlaying(true);
     const handlePause = () => setIsPlaying(false);
     
+    const handleEnded = () => {
+      console.log(`[Croquetas] Audio ${currentAudioIndex} terminó`);
+      const isLastAudio = currentAudioIndex === audioSrcs.length - 1;
+      
+      if (isLastAudio) {
+        // Si es el último audio, no hacer nada - dejar que handleAllComplete se encargue
+        // cuando terminen todas las imágenes del último tramo
+        console.log('[Croquetas] Es el último audio, esperando a que terminen las imágenes');
+      } else {
+        // Si NO es el último audio, reiniciar el audio para que se reproduzca en loop
+        // hasta que cambie al siguiente audio
+        console.log('[Croquetas] No es el último audio, reiniciando...');
+        if (audio && !audio.paused) {
+          audio.currentTime = 0;
+          audio.play().catch((error) => {
+            console.warn('[Croquetas] Error al reiniciar audio:', error);
+          });
+        }
+      }
+    };
+    
     audio.addEventListener('canplay', handleCanPlay);
     audio.addEventListener('loadeddata', handleLoadedData);
     audio.addEventListener('play', handlePlay);
     audio.addEventListener('pause', handlePause);
+    audio.addEventListener('ended', handleEnded);
     
     return () => {
       audio.removeEventListener('canplay', handleCanPlay);
       audio.removeEventListener('loadeddata', handleLoadedData);
       audio.removeEventListener('play', handlePlay);
       audio.removeEventListener('pause', handlePause);
+      audio.removeEventListener('ended', handleEnded);
     };
-  }, [currentAudioSrc, currentAudioIndex]);
+  }, [currentAudioSrc, currentAudioIndex, audioSrcs]);
   
   // Logging para debug en producción
   useEffect(() => {
@@ -220,9 +284,14 @@ const Croquetas = () => {
     setAudioStarted(false);
     setShowStartButton(false);
     setWasSelectedFromIntro(true);
+    wasSelectedFromIntroRef.current = true; // Marcar en el ref también
+    // Guardar en sessionStorage para preservar durante la navegación
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('wasSelectedFromIntro', 'true');
+    }
     setLoadingFadedOut(false);
     const trackIdForUrl = track.id || track.name.toLowerCase().replace(/\s+/g, '-');
-    router.push(`/?trackId=${trackIdForUrl}`);
+    router.push(`/${trackIdForUrl}`);
   };
 
   const handleClick = async (e) => {
@@ -455,6 +524,7 @@ const Croquetas = () => {
             onAllComplete={handleAllComplete}
             audioRef={audioRef}
             isPlaying={isPlaying}
+            currentAudioIndex={audioStarted ? currentAudioIndex : null}
           />
           <UnifiedLoadingIndicator 
             imagesLoading={imagesLoading}
@@ -497,8 +567,8 @@ const Croquetas = () => {
             setIsPlaying={setIsPlaying}
           />
           <LoadingProgressHandler onTriggerCallbackRef={triggerCallbackRef} audioStarted={audioStarted} audioRef={audioRef} />
-          {selectedTrack && audioSrcs.length > 0 && audioRef?.current && <AudioAnalyzer onBeat={handleBeat} onVoice={handleVoice} audioRef={audioRef} />}
-          <SeekWrapper selectedTrack={selectedTrack} audioRef={audioRef} currentAudioIndex={currentAudioIndex} audioSrcs={audioSrcs} />
+          {selectedTrack && audioSrcs.length > 0 && audioRef?.current && <AudioAnalyzer onBeat={handleBeat} onVoice={handleVoice} audioRef={audioRef} currentAudioIndex={currentAudioIndex} />}
+          <SeekWrapper selectedTrack={selectedTrack} audioRef={audioRef} currentAudioIndex={currentAudioIndex} audioSrcs={audioSrcs} setCurrentAudioIndex={setCurrentAudioIndex} />
           {audioStarted && selectedTrack && (
             <SubfolderAudioController selectedTrack={selectedTrack} audioRef={audioRef} currentAudioIndex={currentAudioIndex} setCurrentAudioIndex={setCurrentAudioIndex} audioSrcs={audioSrcs} />
           )}
@@ -888,7 +958,7 @@ const UnifiedContentManager = ({
   );
 };
 
-const BackgroundWrapper = ({ onTriggerCallbackRef, onVoiceCallbackRef, selectedTrack, showOnlyDiagonales = false, onAllComplete, audioRef, isPlaying }) => {
+const BackgroundWrapper = ({ onTriggerCallbackRef, onVoiceCallbackRef, selectedTrack, showOnlyDiagonales = false, onAllComplete, audioRef, isPlaying, currentAudioIndex }) => {
   return (
     <Background 
       onTriggerCallbackRef={showOnlyDiagonales ? null : onTriggerCallbackRef} 
@@ -898,7 +968,7 @@ const BackgroundWrapper = ({ onTriggerCallbackRef, onVoiceCallbackRef, selectedT
       isInitialized={false}
       selectedTrack={showOnlyDiagonales ? null : selectedTrack}
       showOnlyDiagonales={showOnlyDiagonales}
-      currentAudioIndex={showOnlyDiagonales ? null : 0}
+      currentAudioIndex={showOnlyDiagonales ? null : currentAudioIndex}
       onAllComplete={onAllComplete}
       pause={showOnlyDiagonales ? null : (() => {
         if (audioRef?.current) {
@@ -924,7 +994,7 @@ const DiagonalesOnly = () => {
   );
 };
 
-const SeekWrapper = ({ selectedTrack, audioRef, currentAudioIndex, audioSrcs }) => {
+const SeekWrapper = ({ selectedTrack, audioRef, currentAudioIndex, audioSrcs, setCurrentAudioIndex }) => {
   const [squares, setSquares] = useState([]);
   const { seekToImagePosition } = useGallery(selectedTrack, null, null, null);
   
@@ -943,7 +1013,7 @@ const SeekWrapper = ({ selectedTrack, audioRef, currentAudioIndex, audioSrcs }) 
     return () => clearInterval(interval);
   }, []);
   
-  return <Seek squares={squares} seekToImagePosition={seekToImagePosition} selectedTrack={selectedTrack} audioRef={audioRef} currentAudioIndex={currentAudioIndex} audioSrcs={audioSrcs} />;
+  return <Seek squares={squares} seekToImagePosition={seekToImagePosition} selectedTrack={selectedTrack} audioRef={audioRef} currentAudioIndex={currentAudioIndex} audioSrcs={audioSrcs} setCurrentAudioIndex={setCurrentAudioIndex} />;
 };
 
 // Componente para gestionar el guión según la subcarpeta actual

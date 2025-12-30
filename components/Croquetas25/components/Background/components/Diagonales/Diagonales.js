@@ -190,10 +190,14 @@ const Diagonales = ({ squares, analyserRef, dataArrayRef, isInitialized, onVoice
   // Registrar el callback en el ref externo
   useEffect(() => {
     if (!onVoiceCallbackRef) {
+      // Si el ref es null, limpiar el callback
+      if (onVoiceCallbackRef && onVoiceCallbackRef.current) {
+        onVoiceCallbackRef.current = null;
+      }
       return;
     }
     
-    // Asegurar que el handler esté creado
+    // Asegurar que el handler esté creado (usar el del primer useEffect si existe, sino crear uno nuevo)
     if (!voiceCallbackHandlerRef.current) {
       // Crear el handler si no existe
       voiceCallbackHandlerRef.current = (intensity = 0.5, voiceEnergy = 0) => {
@@ -207,13 +211,17 @@ const Diagonales = ({ squares, analyserRef, dataArrayRef, isInitialized, onVoice
           }
           const currentAngle = lastDiagonal ? (lastDiagonal.baseAngle + currentRotation) % 360 : lastDiagonalAngleRef.current;
           lastDiagonalAngleRef.current = currentAngle;
-          const speed = 0.3 + (intensity * 1.7);
+          // Velocidades mucho mayores para que se separen más rápido
+          // Rango: 3.0 a 8.0 (mucho más rápido que antes)
+          const speed = 3.0 + (intensity * 5.0);
+          // Opacidad inicial basada en la intensidad (rango 0.3 a 1.0)
+          const initialOpacity = 0.3 + (intensity * 0.7);
           const newDiag = {
             id: `diag-${Date.now()}-${Math.random()}`,
             baseAngle: currentAngle,
             speed: speed,
             createdAt: now,
-            opacity: 1,
+            opacity: initialOpacity,
             creationIntensity: intensity,
             isFixed: false
           };
@@ -222,7 +230,9 @@ const Diagonales = ({ squares, analyserRef, dataArrayRef, isInitialized, onVoice
       };
     }
     
+    // Siempre actualizar el callback en el ref externo cuando cambia el ref
     onVoiceCallbackRef.current = voiceCallbackHandlerRef.current;
+    console.log('[Diagonales] Callback registrado en onVoiceCallbackRef');
   }, [onVoiceCallbackRef]);
 
   // Inicializar rotación de todas las diagonales - se ejecuta cuando cambian las diagonales

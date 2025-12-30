@@ -5,7 +5,7 @@ import './Seek.scss';
 
 const MAINCLASS = 'seek';
 
-const Seek = ({ squares, seekToImagePosition, selectedTrack, audioRef, currentAudioIndex, audioSrcs }) => {
+const Seek = ({ squares, seekToImagePosition, selectedTrack, audioRef, currentAudioIndex, audioSrcs, setCurrentAudioIndex }) => {
   const [progress, setProgress] = useState(0);
   const [audioDurations, setAudioDurations] = useState([]);
   const progressBarRef = useRef(null);
@@ -51,8 +51,28 @@ const Seek = ({ squares, seekToImagePosition, selectedTrack, audioRef, currentAu
       const audio = audioRef.current;
       if (!audio || !audio.duration) return;
       
-      const progressPercent = (audio.currentTime / audio.duration) * 100;
-      setProgress(Math.max(0, Math.min(100, progressPercent)));
+      // Si hay múltiples audios, calcular el progreso total
+      if (audioDurations.length > 1) {
+        let totalElapsed = 0;
+        // Sumar duraciones de audios anteriores
+        for (let i = 0; i < currentAudioIndex; i++) {
+          totalElapsed += audioDurations[i] || 0;
+        }
+        // Agregar el tiempo del audio actual
+        totalElapsed += audio.currentTime;
+        
+        // Calcular duración total
+        const totalDuration = audioDurations.reduce((sum, dur) => sum + dur, 0);
+        
+        if (totalDuration > 0) {
+          const progressPercent = (totalElapsed / totalDuration) * 100;
+          setProgress(Math.max(0, Math.min(100, progressPercent)));
+        }
+      } else {
+        // Si solo hay un audio, usar el cálculo simple
+        const progressPercent = (audio.currentTime / audio.duration) * 100;
+        setProgress(Math.max(0, Math.min(100, progressPercent)));
+      }
     };
 
     const handleTimeUpdate = () => updateProgress();
@@ -65,7 +85,7 @@ const Seek = ({ squares, seekToImagePosition, selectedTrack, audioRef, currentAu
     return () => {
       audio.removeEventListener('timeupdate', handleTimeUpdate);
     };
-  }, [audioRef, currentAudioIndex]);
+  }, [audioRef, currentAudioIndex, audioDurations]);
 
   const handleProgressClick = async (e) => {
     if (!audioRef?.current || !progressBarRef.current) return;
@@ -74,18 +94,90 @@ const Seek = ({ squares, seekToImagePosition, selectedTrack, audioRef, currentAu
     const clickX = e.clientX - rect.left;
     const percentage = Math.max(0, Math.min(100, (clickX / rect.width) * 100));
     
-    const audio = audioRef.current;
-    if (!audio.duration) return;
-    
-    const targetTime = (percentage / 100) * audio.duration;
-    
-    // Usar tiempos auxiliares para reposicionar imágenes ANTES de hacer seek del audio
-    if (seekToImagePosition && selectedTrack) {
-      seekToImagePosition(targetTime, selectedTrack);
+    // Si hay múltiples audios, determinar qué audio corresponde al click
+    if (audioDurations.length > 1) {
+      const totalDuration = audioDurations.reduce((sum, dur) => sum + dur, 0);
+      if (totalDuration === 0) return;
+      
+      // Calcular el tiempo total correspondiente al click
+      const targetTotalTime = (percentage / 100) * totalDuration;
+      
+      // Determinar qué audio corresponde y el tiempo dentro de ese audio
+      let accumulatedTime = 0;
+      let targetAudioIndex = 0;
+      let targetTime = 0;
+      
+      for (let i = 0; i < audioDurations.length; i++) {
+        const duration = audioDurations[i] || 0;
+        if (targetTotalTime <= accumulatedTime + duration) {
+          targetAudioIndex = i;
+          targetTime = targetTotalTime - accumulatedTime;
+          break;
+        }
+        accumulatedTime += duration;
+      }
+      
+      // Si el audio objetivo es diferente al actual, cambiar de audio
+      if (targetAudioIndex !== currentAudioIndex && setCurrentAudioIndex) {
+        console.log(`[Seek] Cambiando de audio ${currentAudioIndex} a ${targetAudioIndex}, tiempo: ${targetTime}`);
+        const audio = audioRef.current;
+        const wasPlaying = !audio.paused;
+        
+        // Cambiar el índice - esto activará el useEffect que cambiará el src
+        setCurrentAudioIndex(targetAudioIndex);
+        
+        // Esperar a que el audio se cargue y luego hacer seek
+        // Usar un pequeño delay para asegurar que el useEffect haya cambiado el src
+        setTimeout(() => {
+          if (audioRef?.current) {
+            const newAudio = audioRef.current;
+            // Esperar a que el audio esté listo antes de hacer seek
+            const handleCanSeek = () => {
+              newAudio.removeEventListener('canplay', handleCanSeek);
+              newAudio.removeEventListener('loadeddata', handleCanSeek);
+              newAudio.currentTime = targetTime;
+              if (wasPlaying) {
+                newAudio.play().catch(() => {});
+              }
+            };
+            
+            newAudio.addEventListener('canplay', handleCanSeek);
+            newAudio.addEventListener('loadeddata', handleCanSeek);
+            
+            // Si ya está listo, hacer seek inmediatamente
+            if (newAudio.readyState >= 2) {
+              newAudio.currentTime = targetTime;
+              if (wasPlaying) {
+                newAudio.play().catch(() => {});
+              }
+            }
+          }
+        }, 50);
+      } else {
+        // Mismo audio, solo hacer seek
+        const audio = audioRef.current;
+        audio.currentTime = targetTime;
+      }
+      
+      // Usar tiempos auxiliares para reposicionar imágenes ANTES de hacer seek del audio
+      if (seekToImagePosition && selectedTrack) {
+        seekToImagePosition(targetTotalTime, selectedTrack);
+      }
+    } else {
+      // Si solo hay un audio, usar el cálculo simple
+      const audio = audioRef.current;
+      if (!audio.duration) return;
+      
+      const targetTime = (percentage / 100) * audio.duration;
+      
+      // Usar tiempos auxiliares para reposicionar imágenes ANTES de hacer seek del audio
+      if (seekToImagePosition && selectedTrack) {
+        seekToImagePosition(targetTime, selectedTrack);
+      }
+      
+      // Hacer seek en el audio
+      audio.currentTime = targetTime;
     }
-    
-    // Hacer seek en el audio
-    audio.currentTime = targetTime;
   };
 
 

@@ -3,12 +3,14 @@
 import React, { useRef, useEffect, useState } from 'react';
 import './AudioAnalyzer.scss';
 
-const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef }) => {
+const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef, currentAudioIndex = null }) => {
   const [isInitialized, setIsInitialized] = useState(false);
   const audioContextRef = useRef(null);
   const analyserRef = useRef(null);
   const dataArrayRef = useRef(null);
   const timeDataArrayRef = useRef(null);
+  const sourceNodeRef = useRef(null);
+  const lastAudioIndexRef = useRef(null);
   
   // Configurar AudioContext simple para análisis
   useEffect(() => {
@@ -17,13 +19,15 @@ const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef }) => {
     const audio = audioRef.current;
     
     // Verificar si el audio ya está conectado a otro AudioContext
-    // Si ya hay un sourceNode conectado, reutilizar la conexión existente
+    // Reutilizar la conexión existente - el MediaElementSourceNode está conectado al elemento,
+    // no al archivo específico, por lo que funciona cuando cambia el src
     if (audio.__audioAnalyzerSourceNode) {
       console.log('[AudioAnalyzer] Audio ya está conectado, reutilizando conexión existente');
       // Reutilizar el AudioContext existente si está disponible
       if (audio.__audioAnalyzerContext) {
         audioContextRef.current = audio.__audioAnalyzerContext;
         analyserRef.current = audio.__audioAnalyzerAnalyser;
+        sourceNodeRef.current = audio.__audioAnalyzerSourceNode;
         if (audio.__audioAnalyzerDataArray) {
           dataArrayRef.current = audio.__audioAnalyzerDataArray;
         }
@@ -31,6 +35,17 @@ const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef }) => {
           timeDataArrayRef.current = audio.__audioAnalyzerTimeArray;
         }
         setIsInitialized(true);
+        lastAudioIndexRef.current = currentAudioIndex;
+        
+        // Si el AudioContext está suspendido, resumirlo
+        if (audioContextRef.current.state === 'suspended') {
+          audioContextRef.current.resume().then(() => {
+            console.log('[AudioAnalyzer] AudioContext resumido después de cambio de audio');
+          }).catch(err => {
+            console.warn('[AudioAnalyzer] Error resumiendo AudioContext:', err);
+          });
+        }
+        
         return;
       }
     }
@@ -62,6 +77,7 @@ const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef }) => {
       
       audioContextRef.current = audioContext;
       analyserRef.current = analyser;
+      sourceNodeRef.current = source;
       const bufferLength = analyser.frequencyBinCount;
       dataArrayRef.current = new Uint8Array(bufferLength);
       timeDataArrayRef.current = new Uint8Array(bufferLength);
@@ -69,6 +85,9 @@ const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef }) => {
       // Guardar también los arrays para reutilización
       audio.__audioAnalyzerDataArray = dataArrayRef.current;
       audio.__audioAnalyzerTimeArray = timeDataArrayRef.current;
+      
+      // Guardar el índice de audio actual
+      lastAudioIndexRef.current = currentAudioIndex;
       
       if (audioContext.state === 'suspended') {
         audioContext.resume().then(() => {
@@ -105,10 +124,11 @@ const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef }) => {
     }
     
     return () => {
-      // No desconectar el source aquí porque lo necesitamos para que el audio funcione
+      // No desconectar el sourceNode aquí porque lo necesitamos para que el audio funcione
+      // El MediaElementSourceNode está conectado al elemento, no al archivo específico
       // Solo limpiar si realmente estamos desmontando el componente
     };
-  }, [audioRef]);
+  }, [audioRef, currentAudioIndex]);
   const lastBeatTimeRef = useRef(0);
   const lastVoiceTimeRef = useRef(0);
   const energyHistoryRef = useRef([]);
@@ -129,7 +149,21 @@ const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef }) => {
   };
 
   useEffect(() => {
-    console.log(`[AudioAnalyzer] useEffect triggered | analyserRef.current exists: ${!!analyserRef.current} | dataArrayRef.current exists: ${!!dataArrayRef.current} | isInitialized: ${isInitialized} | onBeat exists: ${!!onBeat} | timestamp: ${Date.now()}`);
+    console.log(`[AudioAnalyzer] useEffect triggered | analyserRef.current exists: ${!!analyserRef.current} | dataArrayRef.current exists: ${!!dataArrayRef.current} | isInitialized: ${isInitialized} | onBeat exists: ${!!onBeat} | currentAudioIndex: ${currentAudioIndex} | timestamp: ${Date.now()}`);
+    
+    // Si cambió el audio, limpiar los historiales para empezar con datos frescos
+    if (lastAudioIndexRef.current !== null && lastAudioIndexRef.current !== currentAudioIndex) {
+      console.log(`[AudioAnalyzer] Audio cambió de ${lastAudioIndexRef.current} a ${currentAudioIndex}, limpiando historiales`);
+      energyHistoryRef.current = [];
+      voiceHistoryRef.current = [];
+      trebleHistoryRef.current = [];
+      lastBeatTimeRef.current = 0;
+      lastVoiceTimeRef.current = 0;
+      waitForAudioReady = true; // Marcar que debemos esperar a que el nuevo audio esté listo
+    }
+    
+    // Actualizar el índice de audio actual
+    lastAudioIndexRef.current = currentAudioIndex;
     
     // Esperar a que los refs estén disponibles y el audio esté realmente funcionando
     if (!isInitialized) {
@@ -163,14 +197,9 @@ const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef }) => {
       return;
     }
 
-    // Verificar que el audio esté realmente reproduciéndose antes de analizar
-    if (audio && (audio.paused || audio.readyState < 3)) {
-      console.log(`[AudioAnalyzer] Audio not ready yet | paused: ${audio.paused} | readyState: ${audio.readyState}`);
-      return;
-    }
-
     console.log(`[AudioAnalyzer] Starting analysis loop | analyser.fftSize: ${analyserRef.current.fftSize} | frequencyBinCount: ${analyserRef.current.frequencyBinCount} | dataArray.length: ${dataArrayRef.current.length}`);
     let animationFrameId;
+    let waitForAudioReady = false;
 
     // Función auxiliar para calcular el centroide espectral
     const calculateSpectralCentroid = (frequencyData, audioContext, analyser) => {
@@ -195,12 +224,30 @@ const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef }) => {
     const analyze = () => {
       if (!analyserRef.current || !dataArrayRef.current) {
         console.warn(`[AudioAnalyzer] analyze: Missing refs | analyserRef: ${!!analyserRef.current} | dataArrayRef: ${!!dataArrayRef.current}`);
+        animationFrameId = requestAnimationFrame(analyze);
         return;
+      }
+      
+      // Verificar que el audio esté listo - si no, esperar y continuar el loop
+      const currentAudio = audioRef?.current;
+      if (currentAudio && (currentAudio.paused || currentAudio.readyState < 3)) {
+        // El audio no está listo todavía, pero continuamos el loop para esperar
+        if (frameCount % 60 === 0) {
+          console.log(`[AudioAnalyzer] Waiting for audio to be ready | paused: ${currentAudio.paused} | readyState: ${currentAudio.readyState}`);
+        }
+        animationFrameId = requestAnimationFrame(analyze);
+        return;
+      }
+      
+      // Si estábamos esperando y ahora el audio está listo, loguear
+      if (waitForAudioReady && currentAudio && !currentAudio.paused && currentAudio.readyState >= 3) {
+        console.log(`[AudioAnalyzer] Audio is now ready, starting analysis | readyState: ${currentAudio.readyState}`);
+        waitForAudioReady = false;
       }
       
       frameCount++;
       if (frameCount % 60 === 0) {
-        console.log(`[AudioAnalyzer] Analysis running | frame: ${frameCount} | analyser exists: ${!!analyserRef.current} | dataArray exists: ${!!dataArrayRef.current} | timestamp: ${Date.now()}`);
+        console.log(`[AudioAnalyzer] Analysis running | frame: ${frameCount} | analyser exists: ${!!analyserRef.current} | dataArray exists: ${!!dataArrayRef.current} | audio readyState: ${currentAudio?.readyState} | paused: ${currentAudio?.paused} | timestamp: ${Date.now()}`);
       }
       
       analyserRef.current.getByteFrequencyData(dataArrayRef.current);
@@ -400,7 +447,7 @@ const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef }) => {
         cancelAnimationFrame(animationFrameId);
       }
     };
-  }, [isInitialized, onBeat, onVoice, onAudioData, analyserRef, dataArrayRef, timeDataArrayRef, audioContextRef, audioRef]);
+  }, [isInitialized, onBeat, onVoice, onAudioData, analyserRef, dataArrayRef, timeDataArrayRef, audioContextRef, audioRef, currentAudioIndex]);
 
   return null;
 };
