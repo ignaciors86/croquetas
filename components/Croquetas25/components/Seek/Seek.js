@@ -91,7 +91,9 @@ const Seek = ({ squares, seekToImagePosition, selectedTrack, audioRef, currentAu
     if (!audioRef?.current || !progressBarRef.current) return;
     
     const rect = progressBarRef.current.getBoundingClientRect();
-    const clickX = e.clientX - rect.left;
+    // Soporte para eventos táctiles y de mouse
+    const clientX = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : (e.changedTouches && e.changedTouches[0] ? e.changedTouches[0].clientX : 0));
+    const clickX = clientX - rect.left;
     const percentage = Math.max(0, Math.min(100, (clickX / rect.width) * 100));
     
     // Si hay múltiples audios, determinar qué audio corresponde al click
@@ -235,6 +237,15 @@ const Seek = ({ squares, seekToImagePosition, selectedTrack, audioRef, currentAu
     return segmentsData;
   }, [audioDurations, audioRef]);
 
+  const handleTouchStart = (e) => {
+    e.preventDefault(); // Prevenir scroll mientras se toca
+    handleProgressClick(e);
+  };
+
+  const handleTouchEnd = (e) => {
+    e.preventDefault();
+  };
+
   return (
     <div className={MAINCLASS}>
       <div className={`${MAINCLASS}__progressContainer`}>
@@ -242,7 +253,9 @@ const Seek = ({ squares, seekToImagePosition, selectedTrack, audioRef, currentAu
           className={`${MAINCLASS}__progressBar`}
           ref={progressBarRef}
           onClick={handleProgressClick}
-          style={{}}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+          style={{ touchAction: 'none', userSelect: 'none' }}
         >
           {/* Segmentos de fondo con diferentes colores */}
           {segments.map((segment) => (

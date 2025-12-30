@@ -71,6 +71,8 @@ const Croquetas = () => {
   const minTimeBetweenSquares = 600;
   const typewriterInstanceRef = useRef(null);
   const audioRef = useRef(null);
+  const audioFadeRef = useRef(null); // Segundo audio para crossfade
+  const fadeAnimationRef = useRef(null); // Ref para cancelar animaciones de fade
   const [currentAudioIndex, setCurrentAudioIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
@@ -196,6 +198,107 @@ const Croquetas = () => {
   const isDirectUri = !!trackId;
   const currentAudioSrc = audioSrcs[currentAudioIndex] || audioSrcs[0];
   
+  // Función para hacer crossfade entre dos audios
+  const performCrossfade = useCallback(async (oldAudio, newSrc, targetTime = 0) => {
+    if (!oldAudio || !audioFadeRef.current) return;
+    
+    const newAudio = audioFadeRef.current;
+    const wasPlaying = !oldAudio.paused;
+    
+    // Configurar el nuevo audio
+    const audioSrcString = typeof newSrc === 'string' ? newSrc : (newSrc?.default || newSrc);
+    let finalSrc = audioSrcString;
+    if (!finalSrc.startsWith('http') && !finalSrc.startsWith('data:')) {
+      if (!finalSrc.startsWith('/')) {
+        finalSrc = '/' + finalSrc;
+      }
+    }
+    
+    newAudio.src = finalSrc;
+    newAudio.volume = 0;
+    newAudio.load();
+    
+    // Esperar a que el nuevo audio esté listo
+    await new Promise((resolve) => {
+      const handleCanPlay = () => {
+        newAudio.removeEventListener('canplay', handleCanPlay);
+        newAudio.removeEventListener('loadeddata', handleCanPlay);
+        resolve();
+      };
+      newAudio.addEventListener('canplay', handleCanPlay);
+      newAudio.addEventListener('loadeddata', handleCanPlay);
+      
+      // Si ya está listo, resolver inmediatamente
+      if (newAudio.readyState >= 2) {
+        resolve();
+      }
+    });
+    
+    // Establecer el tiempo objetivo después de que esté listo
+    newAudio.currentTime = targetTime;
+    
+    // Iniciar el nuevo audio si estaba reproduciéndose
+    if (wasPlaying) {
+      try {
+        await newAudio.play();
+      } catch (e) {
+        console.warn('[Crossfade] Error iniciando nuevo audio:', e);
+      }
+    }
+    
+    // Hacer crossfade de 5 segundos
+    const crossfadeDuration = 5.0; // 5 segundos
+    
+    // Cancelar cualquier animación de fade anterior
+    if (fadeAnimationRef.current) fadeAnimationRef.current.kill();
+    
+    // Animar el fade
+    const fadeObj = { oldVol: oldAudio.volume, newVol: 0 };
+    fadeAnimationRef.current = gsap.to(fadeObj, {
+      oldVol: 0,
+      newVol: 1.0,
+      duration: crossfadeDuration,
+      ease: 'power2.inOut',
+      onUpdate: function() {
+        if (oldAudio && !oldAudio.paused) {
+          oldAudio.volume = fadeObj.oldVol;
+        }
+        if (newAudio && !newAudio.paused) {
+          newAudio.volume = fadeObj.newVol;
+        }
+      },
+      onComplete: () => {
+        // Pausar y limpiar el audio viejo
+        if (oldAudio) {
+          oldAudio.pause();
+          oldAudio.currentTime = 0;
+          oldAudio.volume = 1.0; // Resetear volumen para próxima vez
+        }
+        
+        // Copiar el estado del nuevo audio al principal
+        if (audioRef.current && newAudio) {
+          const wasNewAudioPlaying = !newAudio.paused;
+          const newCurrentTime = newAudio.currentTime;
+          const newVolume = newAudio.volume;
+          
+          audioRef.current.src = newAudio.src;
+          audioRef.current.currentTime = newCurrentTime;
+          audioRef.current.volume = newVolume;
+          
+          if (wasNewAudioPlaying) {
+            audioRef.current.play().catch(() => {});
+          }
+        }
+        
+        // Resetear el audio de fade
+        newAudio.pause();
+        newAudio.currentTime = 0;
+        newAudio.volume = 0;
+        newAudio.src = '';
+      }
+    });
+  }, []);
+  
   // Configurar audio simple cuando cambia el track o el índice
   useEffect(() => {
     if (!currentAudioSrc || !audioRef.current) return;
@@ -211,9 +314,16 @@ const Croquetas = () => {
       }
     }
     
-    if (audio.src !== finalSrc) {
+    // Si el src cambió, hacer crossfade si ya había un audio reproduciéndose
+    if (audio.src !== finalSrc && audio.src && audio.src !== '' && !audio.paused) {
+      // Hay un audio reproduciéndose, hacer crossfade
+      performCrossfade(audio, finalSrc, 0);
+      setIsLoaded(false);
+      setLoadingProgress(0);
+    } else if (audio.src !== finalSrc) {
+      // No hay audio reproduciéndose, cambiar directamente
       audio.src = finalSrc;
-      audio.volume = 1.0; // Asegurar que el volumen esté al máximo
+      audio.volume = 1.0;
       audio.load();
       setIsLoaded(false);
       setLoadingProgress(0);
@@ -233,8 +343,40 @@ const Croquetas = () => {
       }
     };
     
-    const handlePlay = () => setIsPlaying(true);
-    const handlePause = () => setIsPlaying(false);
+    const handlePlay = () => {
+      // Fade in al reproducir
+      if (audio && audio.volume < 1.0) {
+        if (fadeAnimationRef.current) fadeAnimationRef.current.kill();
+        fadeAnimationRef.current = gsap.to({ value: audio.volume }, {
+          value: 1.0,
+          duration: 0.5,
+          ease: 'power2.out',
+          onUpdate: function() {
+            if (audio) audio.volume = this.targets()[0].value;
+          }
+        });
+      }
+      setIsPlaying(true);
+    };
+    
+    const handlePause = () => {
+      // Fade out al pausar
+      if (audio && audio.volume > 0) {
+        if (fadeAnimationRef.current) fadeAnimationRef.current.kill();
+        fadeAnimationRef.current = gsap.to({ value: audio.volume }, {
+          value: 0,
+          duration: 0.5,
+          ease: 'power2.in',
+          onUpdate: function() {
+            if (audio) audio.volume = this.targets()[0].value;
+          },
+          onComplete: () => {
+            if (audio) audio.pause();
+          }
+        });
+      }
+      setIsPlaying(false);
+    };
     
     const handleEnded = () => {
       console.log(`[Croquetas] Audio ${currentAudioIndex} terminó`);
@@ -245,14 +387,16 @@ const Croquetas = () => {
         // cuando terminen todas las imágenes del último tramo
         console.log('[Croquetas] Es el último audio, esperando a que terminen las imágenes');
       } else {
-        // Si NO es el último audio, reiniciar el audio para que se reproduzca en loop
-        // hasta que cambie al siguiente audio
-        console.log('[Croquetas] No es el último audio, reiniciando...');
-        if (audio && !audio.paused) {
-          audio.currentTime = 0;
-          audio.play().catch((error) => {
-            console.warn('[Croquetas] Error al reiniciar audio:', error);
+        // Si NO es el último audio, cambiar automáticamente al siguiente con crossfade
+        console.log('[Croquetas] Cambiando automáticamente al siguiente audio con crossfade');
+        const nextAudioIndex = currentAudioIndex + 1;
+        const nextSrc = audioSrcs[nextAudioIndex];
+        if (nextSrc && audio && !audio.paused) {
+          performCrossfade(audio, nextSrc, 0).then(() => {
+            setCurrentAudioIndex(nextAudioIndex);
           });
+        } else {
+          setCurrentAudioIndex(nextAudioIndex);
         }
       }
     };
@@ -270,7 +414,7 @@ const Croquetas = () => {
       audio.removeEventListener('pause', handlePause);
       audio.removeEventListener('ended', handleEnded);
     };
-  }, [currentAudioSrc, currentAudioIndex, audioSrcs]);
+  }, [currentAudioSrc, currentAudioIndex, audioSrcs, performCrossfade]);
   
   // Logging para debug en producción
   useEffect(() => {
@@ -617,6 +761,7 @@ const Croquetas = () => {
             />
           ) : null}
           <audio ref={audioRef} crossOrigin="anonymous" playsInline volume={1.0} style={{ display: 'none' }} />
+          <audio ref={audioFadeRef} crossOrigin="anonymous" playsInline volume={0} style={{ display: 'none' }} />
         </>
       ) : (
         // Cuando no hay track seleccionado, mostrar solo diagonales
