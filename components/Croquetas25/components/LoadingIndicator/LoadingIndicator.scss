@@ -1,0 +1,37 @@
+.loadingIndicator {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2vw;
+  pointer-events: none;
+}
+
+.loadingIndicator__bar {
+  width: 40vw;
+  height: 0.5vw;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 0.25vw;
+  overflow: hidden;
+  position: relative;
+}
+
+.loadingIndicator__fill {
+  height: 100%;
+  background: var(--laser-color);
+  border-radius: 0.25vw;
+  transition: width 0.1s linear, background 0.3s ease, box-shadow 0.3s ease;
+  box-shadow: 0 0 1vw var(--laser-color);
+}
+
+.loadingIndicator__text {
+  font-size: 1.5vw;
+  color: var(--laser-color);
+  font-family: 'VCR', monospace;
+  text-shadow: 0 0 1vw var(--laser-color);
+}
+

@@ -1,0 +1,99 @@
+:root {
+  --laser-color: #00ffff;
+  --laser-opacity: 0.5;
+  --perspective: 100vw;
+  --square-rotate-x: 0deg;
+  --square-rotate-y: 0deg;
+  --stroke-base-width: 0.3vw;
+  --stroke-factor-square-normal: 1;
+  --stroke-factor-square-image: 0;
+  --stroke-factor-diagonal-normal: 1;
+  --stroke-factor-diagonal-fixed: 1;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.background {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  perspective: var(--perspective);
+  perspective-origin: 50% 50%;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.background__square {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  opacity: 0.2;
+  
+  &:not(&--target) {
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    opacity: 1;
+    z-index: 20;
+  }
+  transform-origin: center center;
+  transform-style: preserve-3d;
+  transform: translate(-50%, -50%) rotateX(var(--square-rotate-x)) rotateY(var(--square-rotate-y));
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  
+  border: calc(var(--stroke-base-width) * var(--stroke-factor-square-normal, 1)) solid;
+  border-image: linear-gradient(
+    var(--square-gradient-angle, 45deg),
+    var(--square-color-1, var(--laser-color)),
+    var(--square-color-2, var(--laser-color))
+  ) 1;
+  
+  box-shadow: none;
+  filter: none;
+  
+  transition: 
+    background 0.3s ease,
+    box-shadow 0.3s ease,
+    border-image 0.3s ease,
+    filter 0.3s ease,
+    opacity 0.3s ease;
+  
+  &--target {
+    background: transparent;
+    opacity: 1;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: visible;
+    
+    border-width: calc(var(--stroke-base-width) * var(--stroke-factor-square-image, 0));
+    
+    .background__squareImage {
+      width: auto;
+      height: auto;
+      max-width: 100dvh;
+      max-height: 100dvh;
+      object-fit: contain;
+      display: block;
+      position: absolute;
+      transform: translate(-50%, -50%);
+      box-sizing: border-box;
+      
+      @media (orientation: portrait) {
+        transform: translate(-50%, -50%) scale(0.5);
+      }
+    }
+  }
+}

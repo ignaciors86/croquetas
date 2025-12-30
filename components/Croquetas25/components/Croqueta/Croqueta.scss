@@ -1,0 +1,95 @@
+.croqueta {
+  position: absolute;
+  background: transparent;
+  border: none;
+  color: #00ffff;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  overflow: visible;
+  will-change: transform, opacity;
+  transition: color 0.3s ease, filter 0.3s ease;
+  pointer-events: none;
+  
+  &__svgWrapper {
+    width: 100%;
+    height: auto;
+    max-width: 100%;
+    max-height: 100%;
+    position: relative;
+    z-index: 1;
+    transition: filter 0.3s ease, transform 0.3s ease;
+    filter: drop-shadow(0 0 1vw currentColor);
+    transform: scale(1.15);
+    pointer-events: all;
+    cursor: pointer;
+  }
+  
+  &__svg {
+    width: 100%;
+    height: auto;
+    max-width: 100%;
+    max-height: 100%;
+    pointer-events: all;
+  }
+  
+  &__text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    z-index: 100;
+    pointer-events: none;
+    font-size: 1.6vw;
+    text-align: center;
+    width: auto;
+    max-width: 35%;
+    padding: 0;
+    box-sizing: border-box;
+    text-shadow: 0 0 0.5vw rgba(0, 255, 255, 0.8), 0 0 1vw rgba(0, 255, 255, 0.5);
+    color: #00ffff;
+    white-space: nowrap;
+    transform-origin: center center;
+    transform: translate(-50%, -90%) rotate(10deg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+    font-family: 'VCR', monospace;
+  }
+  
+  &.main-croqueta &__text {
+    font-size: 2.2vw;
+  }
+  
+  &__svgWrapper:hover {
+    filter: drop-shadow(0 0 20px #ff00ff) drop-shadow(0 0 40px rgba(255, 0, 255, 0.5)) !important;
+    transform: scale(1.2) !important;
+  }
+  
+  &__svgWrapper:hover ~ &__text {
+    color: #ff00ff;
+  }
+  
+  &__svgWrapper:hover &__svg {
+    color: #ff00ff;
+  }
+  
+  @media (orientation: portrait) {
+    &__text {
+      font-size: 4.8vw !important;
+    }
+    
+    &.main-croqueta &__text {
+      font-size: 6.6vw !important;
+    }
+  }
+  
+  @media (max-width: 768px) and (orientation: landscape) {
+    &__text {
+      font-size: 0.9vw;
+    }
+  }
+}

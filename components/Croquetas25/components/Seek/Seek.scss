@@ -1,0 +1,69 @@
+.seek {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  z-index: 1000;
+  padding: 0;
+  background: transparent;
+  opacity: 1;
+}
+
+.seek__progressContainer {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5%;
+  min-width: 0;
+}
+
+.seek__progressBar {
+  position: relative;
+  width: 100%;
+  height: 8vh;
+  min-height: 60px;
+  background: transparent;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.seek__segment {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: linear-gradient(
+    to top,
+    var(--segment-color-1, rgba(255, 255, 255, 0.1)) 0%,
+    rgba(255, 255, 255, 0.08) 20%,
+    rgba(255, 255, 255, 0.05) 40%,
+    rgba(255, 255, 255, 0.02) 60%,
+    rgba(255, 255, 255, 0.005) 80%,
+    transparent 100%
+  );
+  opacity: 0.3;
+  border-right: 1px solid rgba(255, 255, 255, 0.15);
+  
+  &:last-child {
+    border-right: none;
+  }
+}
+
+.seek__progressFill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: linear-gradient(
+    to top,
+    var(--laser-color, #00ffff) 0%,
+    rgba(0, 255, 255, 0.08) 20%,
+    rgba(0, 255, 255, 0.05) 40%,
+    rgba(0, 255, 255, 0.02) 60%,
+    rgba(0, 255, 255, 0.005) 80%,
+    transparent 100%
+  );
+  transition: width 0.1s linear;
+}

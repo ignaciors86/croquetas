@@ -1,4 +1,4 @@
-import Croquetas from '@/components/Croquetas';
+import Croquetas from '@/components/Croquetas.jsx';
 
 export default function Home() {
   return (
