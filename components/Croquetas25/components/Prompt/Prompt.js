@@ -43,8 +43,13 @@ const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstance
   }, [isPaused]);
 
   const getCurrentTextIndex = () => {
-    if (!textos || textos.length === 0 || !duration || duration === 0) {
+    if (!textos || textos.length === 0) {
       return -1;
+    }
+    
+    // Si no hay duración aún, mostrar el primer texto
+    if (!duration || duration === 0) {
+      return 0;
     }
 
     // Añadir pausa adicional entre textos (1.5 segundos de pausa por texto)
@@ -67,6 +72,15 @@ const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstance
 
   useEffect(() => {
     const textIndex = getCurrentTextIndex();
+    
+    // Debug logging
+    console.log('[Prompt] getCurrentTextIndex result:', {
+      textIndex,
+      currentTime,
+      duration,
+      textosLength: textos?.length,
+      currentTextIndexRef: currentTextIndexRef.current
+    });
     
     if (textIndex !== currentTextIndexRef.current) {
       currentTextIndexRef.current = textIndex;
@@ -103,12 +117,32 @@ const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstance
     const hasEnded = duration > 0 && currentTime >= duration;
     const textIndexChanged = currentTextIndex !== lastShownTextIndexRef.current;
     const isFirstText = lastShownTextIndexRef.current === -1 && currentTextIndex >= 0;
+    const noDurationYet = !duration || duration === 0;
     
-    if (hasText && !hasEnded && (textIndexChanged || isFirstText)) {
+    // Debug logging
+    console.log('[Prompt] Visibility check:', {
+      hasText,
+      hasEnded,
+      textIndexChanged,
+      isFirstText,
+      noDurationYet,
+      currentTextIndex,
+      textosLength: textos.length,
+      duration,
+      currentTime,
+      isVisible,
+      isTyping
+    });
+    
+    // Si tenemos textos, mostrar el prompt (especialmente si no hay duración aún o es el primer texto)
+    const shouldShow = hasText && !hasEnded && (textIndexChanged || isFirstText || (noDurationYet && textos.length > 0));
+    
+    if (shouldShow) {
       lastShownTextIndexRef.current = currentTextIndex;
       setIsIntentionallyHidden(false);
       
       if (promptRef.current) {
+        console.log('[Prompt] Making prompt visible');
         const fadeInProps = { opacity: 1, y: 0, duration: 0.4, ease: 'power2.out' };
         gsap.to(promptRef.current, fadeInProps);
         setIsVisible(true);
@@ -123,18 +157,59 @@ const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstance
   }, [currentTextIndex, textos.length, isVisible, currentTime, duration, isTyping, isPaused]);
 
   useEffect(() => {
-    promptRef.current && gsap.set(promptRef.current, { opacity: 0, y: 20 });
+    if (promptRef.current) {
+      console.log('[Prompt] Setting initial opacity to 0');
+      gsap.set(promptRef.current, { opacity: 0, y: 20 });
+    }
   }, []);
+  
+  // Forzar visibilidad inicial si hay textos pero aún no hay duración
+  useEffect(() => {
+    if (textos && textos.length > 0 && (!duration || duration === 0) && !isPaused && promptRef.current && !isVisible) {
+      console.log('[Prompt] Forcing initial visibility (no duration yet)');
+      const fadeInProps = { opacity: 1, y: 0, duration: 0.4, ease: 'power2.out' };
+      gsap.to(promptRef.current, fadeInProps);
+      setIsVisible(true);
+      setIsTyping(true);
+      setCurrentTextIndex(0);
+      currentTextIndexRef.current = 0;
+      lastShownTextIndexRef.current = 0;
+    }
+  }, [textos, duration, isPaused, isVisible]);
+
+  // Debug logging al inicio del render
+  console.log('[Prompt] Render check:', {
+    textosLength: textos?.length,
+    textos: textos,
+    currentTextIndex,
+    duration,
+    currentTime,
+    isPaused,
+    analyser: !!analyser
+  });
 
   if (!textos || textos.length === 0) {
+    console.log('[Prompt] No textos, returning null');
     return null;
   }
 
-  const textToShow = currentTextIndex >= 0 && currentTextIndex < textos.length 
-    ? textos[currentTextIndex] 
+  // Si no hay índice válido pero hay textos, usar el primer texto
+  const effectiveIndex = currentTextIndex >= 0 && currentTextIndex < textos.length 
+    ? currentTextIndex 
+    : (textos.length > 0 ? 0 : -1);
+  
+  const textToShow = effectiveIndex >= 0 && effectiveIndex < textos.length 
+    ? textos[effectiveIndex] 
     : '';
 
+  console.log('[Prompt] Text to show:', {
+    effectiveIndex,
+    textToShow,
+    hasText: !!textToShow
+  });
+
   if (!textToShow) {
+    console.log('[Prompt] No textToShow, returning null');
     return null;
   }
 
@@ -169,7 +244,10 @@ const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstance
               typewriter
                 .typeString(textToType)
                 .callFunction(() => {
-                  handleTypewriterComplete(currentTextIndex);
+                  const effectiveIndex = currentTextIndex >= 0 && currentTextIndex < textos.length 
+                    ? currentTextIndex 
+                    : (textos.length > 0 ? 0 : -1);
+                  handleTypewriterComplete(effectiveIndex);
                   pausedTextRef.current = null;
                 })
                 .start();

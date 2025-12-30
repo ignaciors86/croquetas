@@ -75,6 +75,10 @@ const Croquetas = () => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0);
+  // Refs compartidos para AudioAnalyzer que se pasan a Background y Prompt
+  const analyserRef = useRef(null);
+  const dataArrayRef = useRef(null);
+  const [isAudioAnalyzerInitialized, setIsAudioAnalyzerInitialized] = useState(false);
   
   const { tracks, isLoading: tracksLoading } = useTracks();
   
@@ -525,6 +529,9 @@ const Croquetas = () => {
             audioRef={audioRef}
             isPlaying={isPlaying}
             currentAudioIndex={audioStarted ? currentAudioIndex : null}
+            analyserRef={analyserRef}
+            dataArrayRef={dataArrayRef}
+            isAudioAnalyzerInitialized={isAudioAnalyzerInitialized}
           />
           <UnifiedLoadingIndicator 
             imagesLoading={imagesLoading}
@@ -567,7 +574,17 @@ const Croquetas = () => {
             setIsPlaying={setIsPlaying}
           />
           <LoadingProgressHandler onTriggerCallbackRef={triggerCallbackRef} audioStarted={audioStarted} audioRef={audioRef} />
-          {selectedTrack && audioSrcs.length > 0 && audioRef?.current && <AudioAnalyzer onBeat={handleBeat} onVoice={handleVoice} audioRef={audioRef} currentAudioIndex={currentAudioIndex} />}
+          {selectedTrack && audioSrcs.length > 0 && audioRef?.current && (
+            <AudioAnalyzer 
+              onBeat={handleBeat} 
+              onVoice={handleVoice} 
+              audioRef={audioRef} 
+              currentAudioIndex={currentAudioIndex}
+              analyserRef={analyserRef}
+              dataArrayRef={dataArrayRef}
+              setIsInitialized={setIsAudioAnalyzerInitialized}
+            />
+          )}
           <SeekWrapper selectedTrack={selectedTrack} audioRef={audioRef} currentAudioIndex={currentAudioIndex} audioSrcs={audioSrcs} setCurrentAudioIndex={setCurrentAudioIndex} />
           {audioStarted && selectedTrack && (
             <SubfolderAudioController selectedTrack={selectedTrack} audioRef={audioRef} currentAudioIndex={currentAudioIndex} setCurrentAudioIndex={setCurrentAudioIndex} audioSrcs={audioSrcs} />
@@ -579,6 +596,7 @@ const Croquetas = () => {
               isPausedByHold={isPausedByHold}
               audioRef={audioRef}
               currentAudioIndex={currentAudioIndex}
+              analyserRef={analyserRef}
             />
           )}
           {/* Mostrar BackButton siempre si es URI directa (incluso antes de seleccionar track), o cuando audioStarted */}
@@ -958,14 +976,14 @@ const UnifiedContentManager = ({
   );
 };
 
-const BackgroundWrapper = ({ onTriggerCallbackRef, onVoiceCallbackRef, selectedTrack, showOnlyDiagonales = false, onAllComplete, audioRef, isPlaying, currentAudioIndex }) => {
+const BackgroundWrapper = ({ onTriggerCallbackRef, onVoiceCallbackRef, selectedTrack, showOnlyDiagonales = false, onAllComplete, audioRef, isPlaying, currentAudioIndex, analyserRef, dataArrayRef, isAudioAnalyzerInitialized }) => {
   return (
     <Background 
       onTriggerCallbackRef={showOnlyDiagonales ? null : onTriggerCallbackRef} 
       onVoiceCallbackRef={showOnlyDiagonales ? null : onVoiceCallbackRef}
-      analyserRef={null}
-      dataArrayRef={null}
-      isInitialized={false}
+      analyserRef={showOnlyDiagonales ? null : analyserRef}
+      dataArrayRef={showOnlyDiagonales ? null : dataArrayRef}
+      isInitialized={showOnlyDiagonales ? false : isAudioAnalyzerInitialized}
       selectedTrack={showOnlyDiagonales ? null : selectedTrack}
       showOnlyDiagonales={showOnlyDiagonales}
       currentAudioIndex={showOnlyDiagonales ? null : currentAudioIndex}
@@ -1061,8 +1079,10 @@ const SubfolderAudioController = ({ selectedTrack, audioRef, currentAudioIndex, 
   return null;
 };
 
-const GuionManager = ({ selectedTrack, typewriterInstanceRef, isPausedByHold, audioRef, currentAudioIndex }) => {
+const GuionManager = ({ selectedTrack, typewriterInstanceRef, isPausedByHold, audioRef, currentAudioIndex, analyserRef }) => {
   const [currentSubfolder, setCurrentSubfolder] = useState(null);
+  const [loadedGuiones, setLoadedGuiones] = useState({});
+  const [currentGuion, setCurrentGuion] = useState(null);
   
   // Rastrear la subcarpeta actual basándose en el audio que está sonando
   useEffect(() => {
@@ -1088,33 +1108,125 @@ const GuionManager = ({ selectedTrack, typewriterInstanceRef, isPausedByHold, au
     setCurrentSubfolder(foundSubfolder);
   }, [selectedTrack, currentAudioIndex]);
   
-  // Obtener el guión: priorizar el de la raíz, luego el de la subcarpeta actual
-  const getCurrentGuion = () => {
+  // Cargar guiones dinámicamente
+  useEffect(() => {
     if (!selectedTrack || !selectedTrack.guionesBySubfolder) {
-      return selectedTrack?.guion;
+      setCurrentGuion(null);
+      return;
     }
     
-    // Priorizar guión de la raíz
-    const rootGuion = selectedTrack.guionesBySubfolder['__root__'];
-    if (rootGuion && rootGuion.textos) {
-      return rootGuion;
-    }
-    
-    // Si no hay guión en la raíz, usar el de la subcarpeta actual
-    if (currentSubfolder) {
-      const subfolderGuion = selectedTrack.guionesBySubfolder[currentSubfolder];
-      if (subfolderGuion && subfolderGuion.textos) {
-        return subfolderGuion;
+    const loadGuion = async (guionPath) => {
+      if (!guionPath) return null;
+      
+      // Si ya está cargado, devolverlo
+      if (loadedGuiones[guionPath]) {
+        return loadedGuiones[guionPath];
       }
-    }
+      
+      try {
+        // Usar fetch para cargar el archivo .js desde public
+        const response = await fetch(guionPath);
+        if (!response.ok) {
+          throw new Error(`Failed to load guion: ${response.status}`);
+        }
+        
+        const jsContent = await response.text();
+        
+        // Extraer el objeto exportado del archivo JS
+        // Los archivos tienen formato: export default { textos: [...] }
+        // Necesitamos extraer el objeto
+        let guionData = null;
+        
+        // Intentar extraer el objeto del export default
+        const exportMatch = jsContent.match(/export\s+default\s+({[\s\S]*?});?\s*$/m);
+        if (exportMatch) {
+          try {
+            // Usar Function constructor para evaluar de forma más segura
+            const objStr = exportMatch[1];
+            guionData = new Function('return ' + objStr)();
+          } catch (e) {
+            console.warn(`[GuionManager] Error parseando objeto de ${guionPath}:`, e);
+          }
+        }
+        
+        // Si no funcionó, intentar buscar el objeto directamente
+        if (!guionData) {
+          const objMatch = jsContent.match(/{[\s\S]*textos[\s\S]*}/);
+          if (objMatch) {
+            try {
+              guionData = new Function('return ' + objMatch[0])();
+            } catch (e) {
+              console.warn(`[GuionManager] Error parseando objeto alternativo de ${guionPath}:`, e);
+            }
+          }
+        }
+        
+        if (guionData && guionData.textos && Array.isArray(guionData.textos)) {
+          setLoadedGuiones(prev => ({ ...prev, [guionPath]: guionData }));
+          return guionData;
+        }
+      } catch (error) {
+        console.warn(`[GuionManager] Error cargando guión ${guionPath}:`, error);
+      }
+      
+      return null;
+    };
     
-    // Fallback al guión general del track
-    return selectedTrack?.guion;
-  };
+    const determineAndLoadGuion = async () => {
+      // Priorizar guión de la raíz
+      const rootGuionPaths = selectedTrack.guionesBySubfolder['__root__'];
+      if (rootGuionPaths && Array.isArray(rootGuionPaths) && rootGuionPaths.length > 0) {
+        const rootGuion = await loadGuion(rootGuionPaths[0]);
+        if (rootGuion && rootGuion.textos) {
+          setCurrentGuion(rootGuion);
+          return;
+        }
+      }
+      
+      // Si no hay guión en la raíz, usar el de la subcarpeta actual
+      if (currentSubfolder) {
+        const subfolderGuionPaths = selectedTrack.guionesBySubfolder[currentSubfolder];
+        if (subfolderGuionPaths && Array.isArray(subfolderGuionPaths) && subfolderGuionPaths.length > 0) {
+          const subfolderGuion = await loadGuion(subfolderGuionPaths[0]);
+          if (subfolderGuion && subfolderGuion.textos) {
+            setCurrentGuion(subfolderGuion);
+            return;
+          }
+        }
+      }
+      
+      // Fallback al guión general del track
+      if (selectedTrack.guion) {
+        const fallbackGuion = await loadGuion(selectedTrack.guion);
+        if (fallbackGuion && fallbackGuion.textos) {
+          setCurrentGuion(fallbackGuion);
+          return;
+        }
+      }
+      
+      setCurrentGuion(null);
+    };
+    
+    determineAndLoadGuion();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTrack, currentSubfolder]);
   
-  const currentGuion = getCurrentGuion();
+  // Debug logging
+  useEffect(() => {
+    console.log('[GuionManager] Estado:', {
+      selectedTrack: selectedTrack?.name,
+      currentSubfolder,
+      currentGuion: currentGuion ? {
+        hasTextos: !!currentGuion.textos,
+        textosLength: currentGuion.textos?.length
+      } : null,
+      currentAudioIndex,
+      guionesBySubfolder: selectedTrack?.guionesBySubfolder
+    });
+  }, [selectedTrack, currentSubfolder, currentGuion, currentAudioIndex]);
   
   if (!currentGuion || !currentGuion.textos) {
+    console.log('[GuionManager] No hay guión o textos, retornando null');
     return null;
   }
   
@@ -1124,16 +1236,33 @@ const GuionManager = ({ selectedTrack, typewriterInstanceRef, isPausedByHold, au
       typewriterInstanceRef={typewriterInstanceRef} 
       isPausedByHold={isPausedByHold}
       audioRef={audioRef}
+      analyserRef={analyserRef}
     />
   );
 };
 
-const PromptWrapper = ({ textos, typewriterInstanceRef, isPausedByHold, audioRef }) => {
+const PromptWrapper = ({ textos, typewriterInstanceRef, isPausedByHold, audioRef, analyserRef }) => {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   
+  // Debug logging
   useEffect(() => {
-    if (!audioRef?.current) return;
+    console.log('[PromptWrapper] Estado:', {
+      textosLength: textos?.length,
+      textos: textos,
+      currentTime,
+      duration,
+      hasAudioRef: !!audioRef?.current,
+      hasAnalyserRef: !!analyserRef?.current,
+      isPausedByHold
+    });
+  }, [textos, currentTime, duration, audioRef, analyserRef, isPausedByHold]);
+  
+  useEffect(() => {
+    if (!audioRef?.current) {
+      console.log('[PromptWrapper] No audioRef.current, skipping time updates');
+      return;
+    }
     
     const audio = audioRef.current;
     const updateTime = () => {
@@ -1141,14 +1270,26 @@ const PromptWrapper = ({ textos, typewriterInstanceRef, isPausedByHold, audioRef
       if (audio.duration) setDuration(audio.duration);
     };
     
+    // Actualizar inmediatamente si ya hay duración
+    if (audio.duration) {
+      setDuration(audio.duration);
+    }
+    if (audio.readyState >= 2) {
+      setCurrentTime(audio.currentTime);
+    }
+    
     audio.addEventListener('timeupdate', updateTime);
     audio.addEventListener('loadedmetadata', () => {
+      if (audio.duration) setDuration(audio.duration);
+    });
+    audio.addEventListener('durationchange', () => {
       if (audio.duration) setDuration(audio.duration);
     });
     
     return () => {
       audio.removeEventListener('timeupdate', updateTime);
       audio.removeEventListener('loadedmetadata', () => {});
+      audio.removeEventListener('durationchange', () => {});
     };
   }, [audioRef]);
   
@@ -1159,7 +1300,7 @@ const PromptWrapper = ({ textos, typewriterInstanceRef, isPausedByHold, audioRef
       duration={duration}
       typewriterInstanceRef={typewriterInstanceRef}
       isPaused={isPausedByHold}
-      analyser={null}
+      analyser={analyserRef?.current || null}
     />
   );
 };

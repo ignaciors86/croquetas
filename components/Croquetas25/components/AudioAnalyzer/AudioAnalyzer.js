@@ -3,11 +3,31 @@
 import React, { useRef, useEffect, useState } from 'react';
 import './AudioAnalyzer.scss';
 
-const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef, currentAudioIndex = null }) => {
-  const [isInitialized, setIsInitialized] = useState(false);
+const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef, currentAudioIndex = null, analyserRef: externalAnalyserRef, dataArrayRef: externalDataArrayRef, setIsInitialized: externalSetIsInitialized }) => {
+  // Crear refs internos como fallback
+  const internalAnalyserRef = useRef(null);
+  const internalDataArrayRef = useRef(null);
+  const [internalIsInitialized, setInternalIsInitialized] = useState(false);
+  const isInitializedRef = useRef(false);
+  
+  // Usar refs externos si están disponibles, sino usar internos
+  const analyserRef = externalAnalyserRef || internalAnalyserRef;
+  const dataArrayRef = externalDataArrayRef || internalDataArrayRef;
+  
+  // Función para actualizar el estado de inicialización (tanto interno como externo)
+  const updateIsInitialized = (value) => {
+    isInitializedRef.current = value;
+    if (externalSetIsInitialized) {
+      externalSetIsInitialized(value);
+    } else {
+      setInternalIsInitialized(value);
+    }
+  };
+  
+  // Usar el estado interno para las dependencias del useEffect
+  const isInitialized = externalSetIsInitialized ? isInitializedRef.current : internalIsInitialized;
+  
   const audioContextRef = useRef(null);
-  const analyserRef = useRef(null);
-  const dataArrayRef = useRef(null);
   const timeDataArrayRef = useRef(null);
   const sourceNodeRef = useRef(null);
   const lastAudioIndexRef = useRef(null);
@@ -34,7 +54,7 @@ const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef, currentAudioInd
         if (audio.__audioAnalyzerTimeArray) {
           timeDataArrayRef.current = audio.__audioAnalyzerTimeArray;
         }
-        setIsInitialized(true);
+        updateIsInitialized(true);
         lastAudioIndexRef.current = currentAudioIndex;
         
         // Si el AudioContext está suspendido, resumirlo
@@ -57,7 +77,7 @@ const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef, currentAudioInd
     try {
       if (typeof window === 'undefined' || (!window.AudioContext && !window.webkitAudioContext)) {
         console.warn('[AudioAnalyzer] AudioContext not available in this environment');
-        setIsInitialized(false);
+        updateIsInitialized(false);
         return;
       }
       audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -91,13 +111,13 @@ const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef, currentAudioInd
       
       if (audioContext.state === 'suspended') {
         audioContext.resume().then(() => {
-          setIsInitialized(true);
+          updateIsInitialized(true);
           console.log('[AudioAnalyzer] AudioContext creado y resumido');
         }).catch(() => {
-          setIsInitialized(false);
+          updateIsInitialized(false);
         });
       } else {
-        setIsInitialized(true);
+        updateIsInitialized(true);
         console.log('[AudioAnalyzer] AudioContext creado');
       }
     } catch (error) {
@@ -114,12 +134,12 @@ const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef, currentAudioInd
           if (audio.__audioAnalyzerTimeArray) {
             timeDataArrayRef.current = audio.__audioAnalyzerTimeArray;
           }
-          setIsInitialized(true);
+          updateIsInitialized(true);
         } else {
-          setIsInitialized(false);
+          updateIsInitialized(false);
         }
       } else {
-        setIsInitialized(false);
+        updateIsInitialized(false);
       }
     }
     
