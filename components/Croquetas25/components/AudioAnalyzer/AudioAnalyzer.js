@@ -17,11 +17,19 @@ const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef }) => {
     const audio = audioRef.current;
     
     // Verificar si el audio ya está conectado a otro AudioContext
-    // Si ya hay un sourceNode conectado, no crear otro
-    if (audio.__audioAnalyzerConnected) {
+    // Si ya hay un sourceNode conectado, reutilizar la conexión existente
+    if (audio.__audioAnalyzerSourceNode) {
       console.log('[AudioAnalyzer] Audio ya está conectado, reutilizando conexión existente');
       // Reutilizar el AudioContext existente si está disponible
-      if (audioContextRef.current && analyserRef.current) {
+      if (audio.__audioAnalyzerContext) {
+        audioContextRef.current = audio.__audioAnalyzerContext;
+        analyserRef.current = audio.__audioAnalyzerAnalyser;
+        if (audio.__audioAnalyzerDataArray) {
+          dataArrayRef.current = audio.__audioAnalyzerDataArray;
+        }
+        if (audio.__audioAnalyzerTimeArray) {
+          timeDataArrayRef.current = audio.__audioAnalyzerTimeArray;
+        }
         setIsInitialized(true);
         return;
       }
@@ -41,8 +49,11 @@ const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef }) => {
       source.connect(analyser);
       analyser.connect(audioContext.destination);
       
-      // Marcar el audio como conectado
+      // Guardar referencias en el elemento audio para reutilización
       audio.__audioAnalyzerConnected = true;
+      audio.__audioAnalyzerSourceNode = source;
+      audio.__audioAnalyzerContext = audioContext;
+      audio.__audioAnalyzerAnalyser = analyser;
       
       audioContextRef.current = audioContext;
       analyserRef.current = analyser;
@@ -50,29 +61,47 @@ const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef }) => {
       dataArrayRef.current = new Uint8Array(bufferLength);
       timeDataArrayRef.current = new Uint8Array(bufferLength);
       
+      // Guardar también los arrays para reutilización
+      audio.__audioAnalyzerDataArray = dataArrayRef.current;
+      audio.__audioAnalyzerTimeArray = timeDataArrayRef.current;
+      
       if (audioContext.state === 'suspended') {
         audioContext.resume().then(() => {
           setIsInitialized(true);
+          console.log('[AudioAnalyzer] AudioContext creado y resumido');
         }).catch(() => {
           setIsInitialized(false);
         });
       } else {
         setIsInitialized(true);
+        console.log('[AudioAnalyzer] AudioContext creado');
       }
     } catch (error) {
       console.warn('[AudioAnalyzer] Error setting up AudioContext:', error);
-      setIsInitialized(false);
+      // Si el error es que ya está conectado, intentar reutilizar
+      if (error.message.includes('already connected')) {
+        console.log('[AudioAnalyzer] Audio ya conectado, intentando reutilizar conexión existente');
+        if (audio.__audioAnalyzerContext && audio.__audioAnalyzerAnalyser) {
+          audioContextRef.current = audio.__audioAnalyzerContext;
+          analyserRef.current = audio.__audioAnalyzerAnalyser;
+          if (audio.__audioAnalyzerDataArray) {
+            dataArrayRef.current = audio.__audioAnalyzerDataArray;
+          }
+          if (audio.__audioAnalyzerTimeArray) {
+            timeDataArrayRef.current = audio.__audioAnalyzerTimeArray;
+          }
+          setIsInitialized(true);
+        } else {
+          setIsInitialized(false);
+        }
+      } else {
+        setIsInitialized(false);
+      }
     }
     
     return () => {
-      if (source) {
-        try {
-          source.disconnect();
-          if (audio) {
-            audio.__audioAnalyzerConnected = false;
-          }
-        } catch (e) {}
-      }
+      // No desconectar el source aquí porque lo necesitamos para que el audio funcione
+      // Solo limpiar si realmente estamos desmontando el componente
     };
   }, [audioRef]);
   const lastBeatTimeRef = useRef(0);

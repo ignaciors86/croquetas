@@ -494,7 +494,7 @@ const Croquetas = () => {
             setIsPlaying={setIsPlaying}
           />
           <LoadingProgressHandler onTriggerCallbackRef={triggerCallbackRef} audioStarted={audioStarted} audioRef={audioRef} />
-          {audioRef?.current && <AudioAnalyzer onBeat={handleBeat} onVoice={handleVoice} audioRef={audioRef} />}
+          {selectedTrack && audioSrcs.length > 0 && audioRef?.current && <AudioAnalyzer onBeat={handleBeat} onVoice={handleVoice} audioRef={audioRef} />}
           <SeekWrapper selectedTrack={selectedTrack} audioRef={audioRef} currentAudioIndex={currentAudioIndex} audioSrcs={audioSrcs} />
           {audioStarted && selectedTrack && (
             <SubfolderAudioController selectedTrack={selectedTrack} audioRef={audioRef} currentAudioIndex={currentAudioIndex} setCurrentAudioIndex={setCurrentAudioIndex} audioSrcs={audioSrcs} />
@@ -580,16 +580,30 @@ const AudioStarter = ({ audioStarted, audioRef, setIsPlaying, isLoaded: external
       const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
       const minReadyState = isIOS ? 1 : 2;
       
+      // Verificar si el audio está conectado a un AudioContext
+      // Si está conectado, el audio DEBE pasar por el AudioContext para reproducirse
+      const isConnectedToAudioContext = audio.__audioAnalyzerConnected || audio.__audioAnalyzerSourceNode;
+      
       // Verificar readyState directamente
       if (audio.readyState >= minReadyState || isLoaded) {
         try {
           // Asegurar que el volumen esté al máximo
           audio.volume = 1.0;
+          
+          // Si el audio está conectado a un AudioContext, asegurarse de que el AudioContext esté resumido
+          if (isConnectedToAudioContext) {
+            const audioContext = audio.__audioAnalyzerContext;
+            if (audioContext && audioContext.state === 'suspended') {
+              await audioContext.resume();
+              console.log('[AudioStarter] AudioContext resumido antes de reproducir');
+            }
+          }
+          
           const playPromise = audio.play();
           if (playPromise !== undefined) {
             await playPromise;
             setIsPlaying(true);
-            console.log('[AudioStarter] Audio reproducido, readyState:', audio.readyState, 'volume:', audio.volume, 'paused:', audio.paused, 'currentTime:', audio.currentTime);
+            console.log('[AudioStarter] Audio reproducido, readyState:', audio.readyState, 'volume:', audio.volume, 'paused:', audio.paused, 'currentTime:', audio.currentTime, 'connectedToAudioContext:', isConnectedToAudioContext);
           } else {
             setIsPlaying(true);
             console.log('[AudioStarter] Audio reproducido (sin promise), readyState:', audio.readyState);
