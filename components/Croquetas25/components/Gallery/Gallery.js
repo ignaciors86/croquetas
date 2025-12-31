@@ -173,10 +173,10 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
         lastAudioIndexRef.current = null; // Resetear para que el efecto se ejecute en la primera carga
         isLastImageRef.current = false; // Resetear flag de última imagen
         
-        // Detectar si es Croquetas25 (usa flag del track)
+        // Detectar si es Nachitos de Nochevieja (usa flag del track)
         const isCroquetas25 = selectedTrack?.isCroquetas25 === true;
         
-        // Construir estructura: para Croquetas25 todas las imágenes, para tracks normales por subcarpeta
+        // Construir estructura: para Nachitos de Nochevieja todas las imágenes, para tracks normales por subcarpeta
         imagesList.forEach((img, index) => {
           const imageObj = typeof img === 'object' ? img : { path: img, originalPath: img, subfolder: null };
           const imagePath = imageObj.path || img;
@@ -188,9 +188,9 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
           imagesBySubfolderRef.current.set(imagePath, subfolder);
           
           // Para tracks normales: organizar por subcarpeta
-          // Para Croquetas25: todas las imágenes en un solo índice
+          // Para Nachitos de Nochevieja: todas las imágenes en un solo índice
           if (isCroquetas25) {
-            // Croquetas25: todas las imágenes mezcladas
+            // Nachitos de Nochevieja: todas las imágenes mezcladas
             if (!subfolderImageIndicesRef.current.has('__all__')) {
               subfolderImageIndicesRef.current.set('__all__', []);
             }
@@ -331,10 +331,10 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
   }, [selectedTrack, preloadImage, loadImagesInBatches]);
 
   // Determinar la subcarpeta actual basándose en el audio
-  // Para Croquetas25 siempre retorna null (usa todas las imágenes)
+  // Para Nachitos de Nochevieja siempre retorna null (usa todas las imágenes)
   // Para tracks normales retorna la subcarpeta del audio actual
   const getCurrentSubfolder = useCallback(() => {
-    // Croquetas25: no filtrar por subcarpeta
+    // Nachitos de Nochevieja: no filtrar por subcarpeta
     if (selectedTrack?.isCroquetas25 === true) {
       return null;
     }
@@ -363,7 +363,7 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
   useEffect(() => {
     if (allImages.length === 0) return;
     
-    // Detectar si es Croquetas25
+    // Detectar si es Nachitos de Nochevieja
     const isCroquetas25 = selectedTrack?.isCroquetas25 === true;
     
     // Solo procesar si realmente cambió el índice de audio
@@ -371,7 +371,7 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
       return;
     }
     
-    // Para Croquetas25, usar todas las imágenes sin filtrar por subcarpeta
+    // Para Nachitos de Nochevieja, usar todas las imágenes sin filtrar por subcarpeta
     if (isCroquetas25) {
       const allIndices = subfolderImageIndicesRef.current.get('__all__') || 
         Array.from({ length: allImages.length }, (_, i) => i);
@@ -441,14 +441,14 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
       return null;
     }
 
-    // Detectar si es Croquetas25
+    // Detectar si es Nachitos de Nochevieja
     const isCroquetas25 = selectedTrack?.isCroquetas25 === true;
     
     let imageIndices;
     let normalizedSubfolder;
     
     if (isCroquetas25) {
-      // Croquetas25: usar todas las imágenes mezcladas
+      // Nachitos de Nochevieja: usar todas las imágenes mezcladas
       imageIndices = subfolderImageIndicesRef.current.get('__all__') || 
         Array.from({ length: allImages.length }, (_, i) => i);
       normalizedSubfolder = '__all__';

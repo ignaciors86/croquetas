@@ -187,11 +187,11 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
           };
           
           if (isTarget) {
-            // Detectar si es Croquetas25
+            // Detectar si es Nachitos de Nochevieja
             const isCroquetas25 = selectedTrack && (
-              selectedTrack.name?.toLowerCase().includes('croquetas25') ||
-              selectedTrack.name?.toLowerCase().includes('croquetas 25') ||
-              selectedTrack.id?.toLowerCase().includes('croquetas25')
+              selectedTrack.name?.toLowerCase().includes('nachitos de nochevieja') ||
+              selectedTrack.name?.toLowerCase().includes('nachitos-de-nochevieja') ||
+              selectedTrack.id?.toLowerCase().includes('nachitos-de-nochevieja')
             );
             
             const zStart = -600;
@@ -203,7 +203,7 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
             const zProgressToScale85 = (zAtScale85 - zStart) / zTotal;
             
             if (isCroquetas25) {
-              // Para Croquetas25: animación continua sin detención, directamente al fade out
+              // Para Nachitos de Nochevieja: animación continua sin detención, directamente al fade out
               const fadeStartProgress = 0.7; // Empezar fade out al 70% de la animación
               
               timeline.fromTo(el, 

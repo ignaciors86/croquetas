@@ -1,4 +1,4 @@
-// Guion para bodita
+// Guion para Boda
 // Transcripción sobre el día de la boda
 export default {
   textos: [

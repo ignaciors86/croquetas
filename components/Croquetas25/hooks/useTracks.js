@@ -5,7 +5,7 @@ const normalizeName = (name) => name?.toLowerCase().replace(/\s+/g, '-') || '';
 /**
  * Hook para cargar tracks desde API route que escanea el directorio en tiempo de ejecución
  * - Tracks normales: imágenes secuenciales por subcarpeta, asociadas a audios por subcarpeta
- * - Croquetas25: imágenes mezcladas de todas las carpetas
+ * - Nachitos de Nochevieja: imágenes mezcladas de todas las carpetas
  * - Orden: __root__ primero, luego subcarpetas alfabéticamente, imágenes dentro de cada subcarpeta alfabéticamente
  */
 export const useTracks = () => {
@@ -79,17 +79,18 @@ export const useTracks = () => {
         const finalTracks = [];
         
         tracksMap.forEach((track, trackKey) => {
-          // Detectar si es Croquetas25
+          // Detectar si es Nachitos de Nochevieja
           const isCroquetas25 = track.name && (
-            track.name.toLowerCase().includes('croquetas25') ||
-            normalizeName(track.name) === 'croquetas25'
+            track.name.toLowerCase().includes('nachitos de nochevieja') ||
+            track.name.toLowerCase().includes('nachitos-de-nochevieja') ||
+            normalizeName(track.name) === 'nachitos-de-nochevieja'
           );
 
           let imagesArray = [];
           let subfolderOrder = [];
 
           if (isCroquetas25) {
-            // SOLO PARA CROQUETAS25: Intercalar imágenes de TODOS los otros tracks (colecciones)
+            // SOLO PARA NACHITOS DE NOCHEVIEJA: Intercalar imágenes de TODOS los otros tracks (colecciones)
             const otherTracks = Array.from(tracksMap.values())
               .filter(t => t.id !== track.id && t.imagesBySubfolder.size > 0)
               .sort((a, b) => a.name.localeCompare(b.name));
@@ -124,7 +125,7 @@ export const useTracks = () => {
               if (!addedAny) break;
             }
 
-            // SubfolderOrder para Croquetas25: todas las subcarpetas de todos los tracks
+            // SubfolderOrder para Nachitos de Nochevieja: todas las subcarpetas de todos los tracks
             const allSubfolders = new Set();
             tracksMap.forEach((otherTrack) => {
               otherTrack.imagesBySubfolder.forEach((_, subfolder) => {
