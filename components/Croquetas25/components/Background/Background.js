@@ -159,6 +159,9 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
         preloadNextImages();
       }
       
+      // Rotación aleatoria entre -10 y +10 grados (solo si hay imagen)
+      const imageRotation = imagePosition ? (Math.random() - 0.5) * 20 : undefined; // -10 a +10 grados
+      
       const squareData = { 
         id, 
         type,
@@ -167,6 +170,7 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
         isTarget: shouldHaveBackground,
         imageUrl: imageUrl,
         imagePosition: imagePosition,
+        imageRotation: imageRotation,
         isLastImage: isLastImage, // Marcar si es la última imagen
         gradient: {
           color1: color1,
@@ -491,6 +495,8 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
         isInitialized={showOnlyDiagonales ? true : isInitialized}
         onVoiceCallbackRef={showOnlyDiagonales ? null : onVoiceCallbackRef}
       />
+      {/* Blur overlay permanente sobre las diagonales - backdrop-filter difumina lo que está detrás */}
+      <div className={`${MAINCLASS}__blurOverlay`} />
       {!showOnlyDiagonales && squares.map(square => {
         const color1 = square.gradient?.color1 || '#00ffff';
         const color2 = square.gradient?.color2 || '#00ffff';
@@ -514,8 +520,9 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
                 alt="Gallery"
                 className={`${MAINCLASS}__squareImage`}
                 style={{
-                  left: square.imagePosition?.x ?? `${5 + Math.random() * 90}%`,
-                  top: square.imagePosition?.y ?? `${5 + Math.random() * 90}%`
+                  left: square.imagePosition?.x ?? '50%',
+                  top: square.imagePosition?.y ?? '50%',
+                  transform: `translate(-50%, -50%) rotate(${square.imageRotation ?? 0}deg)`
                 }}
               />
             )}

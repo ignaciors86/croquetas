@@ -555,9 +555,46 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
         subfolderIndex++;
         let subfolderCompletedCycle = false;
         if (subfolderIndex >= imageIndices.length) {
-          // Cuando se completa el ciclo (índice vuelve a 0), resetear todas las imágenes a "ready"
-          // para permitir que se usen de nuevo (solo si NO es el último tramo)
-          if (!isLastSubfolder) {
+          // Cuando se completa el ciclo (índice vuelve a 0), verificar si es la última vez
+          // Para Nachitos de Nochevieja (isCroquetas25), solo marcar como última cuando realmente se hayan usado todas las imágenes
+          if (isCroquetas25) {
+            // Para Nachitos de Nochevieja: verificar si todas las imágenes han sido usadas al menos una vez
+            let allImagesUsed = true;
+            for (let i = 0; i < imageIndices.length; i++) {
+              const imgObj = allImages[imageIndices[i]];
+              const imgPath = typeof imgObj === 'object' ? (imgObj.path || imgObj) : imgObj;
+              const state = imageStatesRef.current.get(imgPath);
+              if (!state || state.state !== 'used') {
+                allImagesUsed = false;
+                break;
+              }
+            }
+            
+            if (allImagesUsed) {
+              // Todas las imágenes han sido usadas, marcar la próxima como última
+              subfolderIndex = imageIndices.length; // Mantener en el final
+              subfolderCurrentIndexRef.current.set(normalizedSubfolder, subfolderIndex);
+              currentIndexRef.current = imageIndices[0] || 0;
+              isLastImageRef.current = true;
+              return imagePath;
+            } else {
+              // Aún hay imágenes sin usar, resetear y continuar
+              subfolderImageIndicesRef.current.get(normalizedImageSubfolder)?.forEach(idx => {
+                const imgObj = allImages[idx];
+                const imgPath = typeof imgObj === 'object' ? (imgObj.path || imgObj) : imgObj;
+                const state = imageStatesRef.current.get(imgPath);
+                if (state && state.state === 'used') {
+                  imageStatesRef.current.set(imgPath, { ...state, state: 'ready' });
+                }
+              });
+              if (imageSubfolder !== null && subfolderCountsRef.current.has(imageSubfolder)) {
+                subfolderCountsRef.current.get(imageSubfolder).used = 0;
+              }
+              subfolderIndex = 0;
+              subfolderCompletedCycle = true;
+            }
+          } else if (!isLastSubfolder) {
+            // Para tracks normales: resetear si NO es el último tramo
             subfolderImageIndicesRef.current.get(normalizedImageSubfolder)?.forEach(idx => {
               const imgObj = allImages[idx];
               const imgPath = typeof imgObj === 'object' ? (imgObj.path || imgObj) : imgObj;
@@ -591,19 +628,9 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
         subfolderCurrentIndexRef.current.set(normalizedSubfolder, subfolderIndex);
         currentIndexRef.current = imageIndices[subfolderIndex] || imageIndices[0] || 0;
         
-        // Verificar si todas las subcarpetas han completado al menos un ciclo
-        // Esto es más confiable que verificar imágenes "used" porque se resetean
-        const allSubfoldersKeys = Array.from(subfolderCountsRef.current.keys()).map(sf => 
-          sf === null ? '__root__' : sf
-        );
-        const allSubfoldersComplete = allSubfoldersKeys.length > 0 && 
-          allSubfoldersKeys.every(subfolder => 
-            subfoldersCompletedAtLeastOnceRef.current.has(subfolder)
-          );
-        
-        if (allSubfoldersComplete && onAllComplete) {
-          onAllComplete();
-        }
+        // NO llamar a onAllComplete aquí - solo se debe llamar cuando se muestre la última imagen
+        // La verificación de todas las subcarpetas completadas puede ocurrir antes de mostrar todas las imágenes
+        // onAllComplete se llamará en el onComplete de la animación de la última imagen (cuando isLastImageRef.current es true)
         
         // Retornar la imagen (el flag isLastImageRef se mantiene hasta que se use)
         return imagePath;

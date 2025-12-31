@@ -27,6 +27,20 @@
   perspective-origin: 50% 50%;
   pointer-events: none;
   z-index: 1;
+  
+  &__blurOverlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.1); // Reducir opacidad del fondo para que las diagonales se vean mejor
+    backdrop-filter: blur(5px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    pointer-events: none;
+    z-index: 10; // Por encima de las diagonales para que el backdrop-filter difumine las diagonales
+    opacity: .5;
+  }
 }
 
 .background__square {
@@ -88,11 +102,11 @@
       object-fit: contain;
       display: block;
       position: absolute;
-      transform: translate(-50%, -50%);
       box-sizing: border-box;
+      transform-origin: center center;
       
       @media (orientation: portrait) {
-        transform: translate(-50%, -50%) scale(0.5);
+        // El scale se aplica en el transform inline junto con la rotación
       }
     }
   }
