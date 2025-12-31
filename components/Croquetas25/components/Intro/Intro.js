@@ -5,7 +5,7 @@ import './Intro.scss';
 
 const MAINCLASS = 'intro';
 
-const Intro = ({ tracks, onTrackSelect, onStartPlayback = null, selectedTrackId = null, isDirectUri = false, isVisible = true }) => {
+const Intro = ({ tracks, onTrackSelect, onStartPlayback = null, selectedTrackId = null, isDirectUri = false, isVisible = true, keepBlurVisible = false }) => {
   const titleRef = useRef(null);
   const buttonsRef = useRef([]);
   const [isAnimating, setIsAnimating] = useState(false);
@@ -105,7 +105,10 @@ const Intro = ({ tracks, onTrackSelect, onStartPlayback = null, selectedTrackId 
   useEffect(() => {
     if (!overlayRef.current || !containerRef.current) return;
     
-    if (isVisible) {
+    // Si keepBlurVisible es true, mantener el blur visible pero ocultar contenido
+    const shouldShowContent = isVisible && !keepBlurVisible;
+    
+    if (isVisible || keepBlurVisible) {
       // Resetear todas las transformaciones primero
       if (titleRef.current) {
         gsap.set(titleRef.current, { 
@@ -158,19 +161,19 @@ const Intro = ({ tracks, onTrackSelect, onStartPlayback = null, selectedTrackId 
         ease: 'power2.out'
       });
       
-      // Animar contenedor desde abajo
+      // Animar contenedor desde abajo (solo si shouldShowContent)
       tl.to(containerRef.current, {
         y: '0%',
         rotation: 0,
-        opacity: 1,
+        opacity: shouldShowContent ? 1 : 0,
         duration: 1.2,
         ease: 'back.out(1.4)'
       }, '-=0.6'); // Iniciar un poco antes de que termine el fade del blur
       
-      // Animar título
+      // Animar título (solo si shouldShowContent)
       if (titleRef.current) {
         tl.to(titleRef.current, {
-          opacity: 1,
+          opacity: shouldShowContent ? 1 : 0,
           y: 0,
           rotation: 0,
           duration: 1.0,
@@ -186,7 +189,7 @@ const Intro = ({ tracks, onTrackSelect, onStartPlayback = null, selectedTrackId 
         .filter(i => buttonsRef.current[i] && i !== mainCroquetaIndex)
         .sort(() => Math.random() - 0.5); // Orden aleatorio
       
-      // Animar croqueta principal sin escala (mantiene su tamaño CSS)
+      // Animar croqueta principal sin escala (mantiene su tamaño CSS) - solo si shouldShowContent
       if (mainCroquetaIndex >= 0 && buttonsRef.current[mainCroquetaIndex]) {
         const mainButtonRef = buttonsRef.current[mainCroquetaIndex];
         gsap.set(mainButtonRef, { 
@@ -195,7 +198,7 @@ const Intro = ({ tracks, onTrackSelect, onStartPlayback = null, selectedTrackId 
           rotation: 0
         });
         tl.to(mainButtonRef, {
-          opacity: 1,
+          opacity: shouldShowContent ? 1 : 0,
           scale: 1,
           rotation: 0,
           duration: 0.6,
@@ -203,14 +206,14 @@ const Intro = ({ tracks, onTrackSelect, onStartPlayback = null, selectedTrackId 
         }, 0.4);
       }
       
-      // Animar croquetas normales con escala
+      // Animar croquetas normales con escala - solo si shouldShowContent
       normalButtonIndices.forEach((originalIndex, shuffledIndex) => {
         const buttonRef = buttonsRef.current[originalIndex];
         if (buttonRef) {
           const delay = 0.4 + (shuffledIndex * 0.1);
           tl.to(buttonRef, {
-            opacity: 1,
-            scale: 1,
+            opacity: shouldShowContent ? 1 : 0,
+            scale: shouldShowContent ? 1 : 0,
             rotation: 0,
             duration: 0.6,
             ease: 'back.out(1.7)'
@@ -218,6 +221,23 @@ const Intro = ({ tracks, onTrackSelect, onStartPlayback = null, selectedTrackId 
         }
       });
     } else {
+      // Si keepBlurVisible es true, no ocultar el overlay, solo el contenido
+      if (keepBlurVisible) {
+        // Mantener blur visible pero ocultar contenido
+        if (titleRef.current) {
+          gsap.to(titleRef.current, { opacity: 0, duration: 0.3 });
+        }
+        buttonsRef.current.forEach(buttonRef => {
+          if (buttonRef) {
+            gsap.to(buttonRef, { opacity: 0, scale: 0, duration: 0.3 });
+          }
+        });
+        if (containerRef.current) {
+          gsap.to(containerRef.current, { opacity: 0, duration: 0.3 });
+        }
+        return;
+      }
+      
       // Animación de salida hacia abajo con rotación
       const tl = gsap.timeline({
         onComplete: () => {
@@ -256,7 +276,7 @@ const Intro = ({ tracks, onTrackSelect, onStartPlayback = null, selectedTrackId 
         ease: 'power2.in'
       }, '-=0.3');
     }
-  }, [isVisible]);
+  }, [isVisible, keepBlurVisible]);
 
   useEffect(() => {
     rotationTimelinesRef.current.forEach(tl => tl?.kill());
@@ -284,14 +304,20 @@ const Intro = ({ tracks, onTrackSelect, onStartPlayback = null, selectedTrackId 
     };
   }, [tracks, selectedTrackId, isMainCroqueta]);
 
+  // Si keepBlurVisible es true, mantener el blur visible pero ocultar el contenido
+  const shouldShowContent = isVisible && !keepBlurVisible;
+  
   return (
     <div 
       className={MAINCLASS} 
       ref={overlayRef}
       onClick={(e) => e.target === overlayRef.current && e.preventDefault()}
-      style={{ display: isVisible ? 'flex' : 'none' }}
+      style={{ 
+        display: (isVisible || keepBlurVisible) ? 'flex' : 'none',
+        pointerEvents: shouldShowContent ? 'auto' : 'none'
+      }}
     >
-      <div className={`${MAINCLASS}__container`} ref={containerRef}>
+      <div className={`${MAINCLASS}__container`} ref={containerRef} style={{ opacity: shouldShowContent ? 1 : 0, pointerEvents: shouldShowContent ? 'auto' : 'none' }}>
         <h2 ref={titleRef} className={`${MAINCLASS}__title`}>Coge una croqueta</h2>
         
         {selectedTrackId && memoizedTracks.map((track, index) => {

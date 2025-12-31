@@ -59,40 +59,91 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
         
         // Detectar orientación
         const isPortrait = window.innerHeight > window.innerWidth;
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+        
+        // Calcular tamaño máximo de imagen según CSS
+        // Desktop: max-width y max-height = 100dvh (100% del viewport height)
+        // Portrait: max-width y max-height = 100dvh, pero con scale(0.5), así que tamaño efectivo = 50dvh
+        let maxImageWidth, maxImageHeight;
+        if (isPortrait) {
+          // En portrait, el scale(0.5) hace que el tamaño efectivo sea la mitad
+          maxImageWidth = viewportHeight * 0.5; // 50% del viewport height
+          maxImageHeight = viewportHeight * 0.5;
+        } else {
+          // En desktop, max-width y max-height = 100dvh
+          maxImageWidth = viewportHeight; // 100% del viewport height
+          maxImageHeight = viewportHeight;
+        }
+        
+        // Calcular márgenes necesarios para mantener imagen completa dentro de límites
+        // Como la imagen está centrada (translate(-50%, -50%)), necesitamos la mitad del tamaño como margen
+        const marginXPercent = (maxImageWidth / 2) / viewportWidth * 100;
+        const marginYPercent = (maxImageHeight / 2) / viewportHeight * 100;
+        
+        // Área válida considerando márgenes (para que la imagen completa quede dentro)
+        const minX = marginXPercent;
+        const maxX = 100 - marginXPercent;
+        const minY = marginYPercent;
+        const maxY = 100 - marginYPercent;
+        
+        // Zona a evitar (prompt) en coordenadas
+        let avoidMinX, avoidMaxX, avoidMinY, avoidMaxY;
+        if (isPortrait) {
+          avoidMinX = 5;
+          avoidMaxX = 95;
+          avoidMinY = 80; // Desde arriba (100% - 20%)
+          avoidMaxY = 100;
+        } else {
+          avoidMinX = 20;
+          avoidMaxX = 80;
+          avoidMinY = 85; // Desde arriba (100% - 15%)
+          avoidMaxY = 100;
+        }
         
         let x, y;
         let attempts = 0;
         const maxAttempts = 50;
         
         do {
-          // Generar posición aleatoria
-          x = 5 + Math.random() * 90; // 5% a 95%
-          y = 5 + Math.random() * 90; // 5% a 95%
-          
+          // Generar posición aleatoria dentro del área válida
           if (isPortrait) {
-            // En portrait: evitar zona 5%-95% x, 80%-100% y (últimos 20% desde abajo)
-            const avoidBottomZone = y > 80;
-            const avoidCenterX = x >= 5 && x <= 95;
-            const inAvoidZone = avoidBottomZone && avoidCenterX;
-            
-            if (!inAvoidZone) break;
+            // Portrait: rango limitado por márgenes
+            x = minX + Math.random() * (maxX - minX);
+            y = minY + Math.random() * (maxY - minY);
           } else {
-            // En landscape: evitar zona 20%-80% x, 85%-100% y (últimos 15% desde abajo)
-            const avoidBottomZone = y > 85;
-            const avoidCenterX = x >= 20 && x <= 80;
-            const inAvoidZone = avoidBottomZone && avoidCenterX;
-            
-            if (!inAvoidZone) break;
+            // Desktop: más cerca del centro, pero respetando márgenes
+            // Centro está en 50%, así que usamos un rango alrededor del centro
+            const centerRange = 20; // ±20% del centro
+            x = Math.max(minX, Math.min(maxX, 50 - centerRange + Math.random() * (centerRange * 2)));
+            y = minY + Math.random() * (maxY - minY);
+          }
+          
+          // Verificar que no esté en zona del prompt
+          const inPromptZone = x >= avoidMinX && x <= avoidMaxX && y >= avoidMinY && y <= avoidMaxY;
+          
+          // Verificar que esté dentro de límites válidos (con márgenes)
+          const withinBounds = x >= minX && x <= maxX && y >= minY && y <= maxY;
+          
+          if (!inPromptZone && withinBounds) {
+            break;
           }
           
           attempts++;
         } while (attempts < maxAttempts);
         
-        // Si después de los intentos sigue en zona prohibida, usar posición alternativa
+        // Si después de los intentos sigue en zona prohibida, usar posición alternativa segura
         if (attempts >= maxAttempts) {
-          // Forzar posición en zona superior o lateral
-          x = Math.random() < 0.5 ? 5 + Math.random() * 15 : 85 + Math.random() * 10; // Lados
-          y = 5 + Math.random() * 70; // Zona superior (5% a 75%)
+          if (isPortrait) {
+            // Forzar posición en zona superior segura (respetando márgenes)
+            x = minX + Math.random() * (maxX - minX);
+            y = minY + Math.random() * Math.min(avoidMinY - marginYPercent - minY, maxY - minY);
+          } else {
+            // Desktop: posición alternativa más cerca del centro (respetando márgenes)
+            const centerRange = 20;
+            x = Math.max(minX, Math.min(maxX, 50 - centerRange + Math.random() * (centerRange * 2)));
+            y = minY + Math.random() * Math.min(avoidMinY - marginYPercent - minY, maxY - minY);
+          }
         }
         
         imagePosition = {

@@ -189,23 +189,31 @@ const Croquetas25 = () => {
 
   const handleClick = async (e) => {
     if (!audioStarted && selectedTrack && showStartButton && startButtonRef.current) {
-      // Detectar iOS (especialmente Chrome en iOS)
+      // Detectar móviles
       const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+      const isAndroid = /Android/.test(navigator.userAgent);
       const isChromeIOS = isIOS && /CriOS/.test(navigator.userAgent);
       const isSafariIOS = isIOS && !isChromeIOS;
+      const isMobile = isIOS || isAndroid;
       
-      // En iOS, necesitamos iniciar el audio DIRECTAMENTE desde el click (no async)
-      // iOS requiere que play() se llame sincrónicamente desde el evento de usuario
-      if (isIOS || isChromeIOS || isSafariIOS) {
+      // En móviles, asegurar que el AudioContext esté inicializado y resumido
+      if (isMobile) {
         // Obtener el contexto de audio si está disponible
         const audioContext = window.__globalAudioContext;
-        if (audioContext && audioContext.state === 'suspended') {
-          // Resumir AudioContext - debe ser dentro del evento de usuario
-          audioContext.resume().then(() => {
-            console.log('[Croquetas25] AudioContext resumido desde click del usuario');
-          }).catch(err => {
-            console.warn('[Croquetas25] Error resumiendo AudioContext:', err);
-          });
+        if (audioContext) {
+          if (audioContext.state === 'suspended') {
+            // Resumir AudioContext - debe ser dentro del evento de usuario
+            try {
+              await audioContext.resume();
+              console.log('[Croquetas25] AudioContext resumido desde click del usuario (móvil)');
+            } catch (err) {
+              console.warn('[Croquetas25] Error resumiendo AudioContext:', err);
+            }
+          }
+        } else {
+          // Si no hay AudioContext, esperar un momento para que se inicialice
+          console.log('[Croquetas25] Esperando inicialización del AudioContext...');
+          await new Promise(resolve => setTimeout(resolve, 100));
         }
         
         // Intentar reproducir el audio directamente desde el elemento
@@ -213,13 +221,13 @@ const Croquetas25 = () => {
         try {
           const audioElement = document.querySelector('.audio-context');
           if (audioElement) {
-            // En iOS, incluso con readyState bajo, intentar reproducir
+            // En móviles, incluso con readyState bajo, intentar reproducir
             // El navegador cargará el audio si es necesario
             if (audioElement.paused) {
               const playPromise = audioElement.play();
               if (playPromise !== undefined) {
                 playPromise.then(() => {
-                  console.log('[Croquetas25] Audio iniciado directamente desde click en iOS');
+                  console.log('[Croquetas25] Audio iniciado directamente desde click en móvil');
                 }).catch(playErr => {
                   console.warn('[Croquetas25] Error iniciando audio directamente:', playErr);
                 });
@@ -408,9 +416,11 @@ const Croquetas25 = () => {
         <Intro 
           tracks={tracks} 
           onTrackSelect={handleTrackSelect}
-          selectedTrackId={trackId ? trackId.toLowerCase().replace(/\s+/g, '-') : 'croquetas25'}
+          onStartPlayback={isDirectUri && !wasSelectedFromIntro && selectedTrack ? handleClick : null}
+          selectedTrackId={trackId ? trackId.toLowerCase().replace(/\s+/g, '-') : 'nachitos-de-nochevieja'}
           isDirectUri={isDirectUri}
-          isVisible={!selectedTrack}
+          isVisible={!selectedTrack || (isDirectUri && !wasSelectedFromIntro && !audioStarted)}
+          keepBlurVisible={selectedTrack && audioStarted}
         />
       )}
       
