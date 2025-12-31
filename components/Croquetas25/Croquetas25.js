@@ -46,6 +46,41 @@ const Croquetas25 = () => {
   
   const { tracks, isLoading: tracksLoading } = useTracks();
   
+  // Detectar si viene de la home y inicializar AudioContext en móviles
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
+    // Verificar si viene de la home desde sessionStorage
+    const wasFromIntro = sessionStorage.getItem('wasSelectedFromIntro') === 'true';
+    if (wasFromIntro) {
+      setWasSelectedFromIntro(true);
+      sessionStorage.removeItem('wasSelectedFromIntro');
+    }
+    
+    // Si viene de la home, intentar inicializar AudioContext inmediatamente en móviles
+    if (wasFromIntro) {
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+      const isAndroid = /Android/.test(navigator.userAgent);
+      const isMobile = isIOS || isAndroid;
+      
+      if (isMobile) {
+        // Intentar inicializar AudioContext después de un breve delay
+        // para asegurar que el componente esté montado
+        setTimeout(() => {
+          const audioContext = window.__globalAudioContext;
+          if (audioContext && audioContext.state === 'suspended') {
+            // Intentar resumir, pero si falla, el listener táctil lo hará
+            audioContext.resume().then(() => {
+              console.log('[Croquetas25] AudioContext resumido al detectar navegación desde home');
+            }).catch(err => {
+              console.warn('[Croquetas25] AudioContext no pudo resumirse automáticamente, esperando evento de usuario:', err);
+            });
+          }
+        }, 100);
+      }
+    }
+  }, []);
+  
   // Callback para cuando se completa una subcarpeta - cambiar al siguiente audio
   const handleSubfolderComplete = useCallback((completedSubfolder) => {
     if (!selectedTrack || !selectedTrack.subfolderToAudioIndex) return;
@@ -142,6 +177,12 @@ const Croquetas25 = () => {
     setShowStartButton(false);
     setWasSelectedFromIntro(true);
     setLoadingFadedOut(false);
+    
+    // Guardar en sessionStorage para preservar durante la navegación
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('wasSelectedFromIntro', 'true');
+    }
+    
     const trackIdForUrl = track.id || track.name.toLowerCase().replace(/\s+/g, '-');
     navigate(`/nachitos-de-nochevieja/${trackIdForUrl}`, { replace: true });
   };
@@ -520,6 +561,52 @@ const AudioStarter = ({ audioStarted }) => {
     }
   }, [audioStarted, isLoaded, play, audioRef, audioContextRef]);
 
+  // Listener para inicializar AudioContext en móviles cuando viene de la home
+  useEffect(() => {
+    if (!wasSelectedFromIntro || !audioStarted) return;
+    
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    const isAndroid = /Android/.test(navigator.userAgent);
+    const isMobile = isIOS || isAndroid;
+    
+    if (!isMobile) return;
+    
+    const initializeAudioContextOnTouch = async (e) => {
+      const audioContext = audioContextRef?.current || window.__globalAudioContext;
+      
+      if (audioContext && audioContext.state === 'suspended') {
+        try {
+          await audioContext.resume();
+          console.log('[AudioInitializer] AudioContext resumido desde evento táctil');
+          
+          // Si el audio está pausado y debería estar reproduciéndose, intentar reproducirlo
+          if (audioRef?.current && audioRef.current.paused && audioStarted) {
+            try {
+              await play();
+              console.log('[AudioInitializer] Audio iniciado desde evento táctil');
+            } catch (playErr) {
+              console.warn('[AudioInitializer] Error iniciando audio desde evento táctil:', playErr);
+            }
+          }
+        } catch (err) {
+          console.warn('[AudioInitializer] Error resumiendo AudioContext desde evento táctil:', err);
+        }
+      }
+    };
+    
+    // Escuchar eventos táctiles y de clic para inicializar AudioContext
+    const events = ['touchstart', 'touchend', 'click'];
+    events.forEach(eventType => {
+      document.addEventListener(eventType, initializeAudioContextOnTouch, { once: true, passive: true });
+    });
+    
+    return () => {
+      events.forEach(eventType => {
+        document.removeEventListener(eventType, initializeAudioContextOnTouch);
+      });
+    };
+  }, [wasSelectedFromIntro, audioStarted, audioContextRef, audioRef, play]);
+
   return null;
 };
 
@@ -729,21 +816,34 @@ const UnifiedContentManager = ({
         setShowStartButton(false);
       }
       if (!audioStarted && everythingReady && loadingFadedOut) {
-        // En iOS, especialmente Chrome, asegurar que el AudioContext esté resumido antes de iniciar
+        // En móviles, especialmente cuando viene de la home, necesitamos inicializar el AudioContext
         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+        const isAndroid = /Android/.test(navigator.userAgent);
         const isChromeIOS = isIOS && /CriOS/.test(navigator.userAgent);
+        const isMobile = isIOS || isAndroid;
         
-        if (isIOS || isChromeIOS) {
+        if (isMobile) {
           const audioContext = audioContextRef?.current || window.__globalAudioContext;
+          
+          // Si el AudioContext existe pero está suspendido, intentar resumirlo
           if (audioContext && audioContext.state === 'suspended') {
+            // En móviles, cuando viene de la home, el evento de usuario se pierde
+            // Intentar resumir el AudioContext, pero si falla, esperar al primer toque
             audioContext.resume().then(() => {
-              console.log('[UnifiedContentManager] AudioContext resumido antes de iniciar audio');
+              console.log('[UnifiedContentManager] AudioContext resumido antes de iniciar audio (desde home)');
               setAudioStarted(true);
             }).catch(err => {
-              console.warn('[UnifiedContentManager] Error resumiendo AudioContext:', err);
-              setAudioStarted(true); // Continuar de todas formas
+              console.warn('[UnifiedContentManager] Error resumiendo AudioContext (desde home):', err);
+              // Si falla, esperar al primer toque del usuario para inicializar
+              // Esto se manejará en el listener de eventos táctiles
+              setAudioStarted(true); // Continuar de todas formas, el audio se iniciará en el primer toque
             });
+          } else if (!audioContext) {
+            // Si no hay AudioContext, esperar a que se inicialice
+            console.log('[UnifiedContentManager] Esperando inicialización del AudioContext en móvil');
+            setAudioStarted(true); // Marcar como iniciado, pero el audio esperará al primer toque
           } else {
+            // AudioContext ya está activo
             setAudioStarted(true);
           }
         } else {
