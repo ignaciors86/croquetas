@@ -74,85 +74,10 @@ const Croquetas = () => {
   const audioRef = useRef(null);
   const audioFadeRef = useRef(null); // Segundo audio para crossfade
   const fadeAnimationRef = useRef(null); // Ref para cancelar animaciones de fade
-  const pendingSeekTimeRef = useRef(null); // Ref para almacenar el tiempo de seek pendiente
-  const loadingRef = useRef(null); // Ref para el elemento de loading global
-  const loadingFadeTweenRef = useRef(null); // Ref para la animación de fade del loading
-  const isCrossfadingRef = useRef(false); // Ref para rastrear si estamos en medio de un crossfade
-  
-  // Constantes centralizadas para duraciones de fade
-  const FADE_DURATION_SHORT = 0.3; // Fade rápido para cambios inmediatos
-  const FADE_DURATION_NORMAL = 0.5; // Fade normal para play/pause
-  const CROSSFADE_DURATION = 1.0; // Crossfade más corto y rápido al cambiar de canción
-  
-  // Función centralizada para fade out
-  const fadeOutAudio = useCallback((audio, duration = FADE_DURATION_NORMAL, targetVolume = 0, onComplete = null) => {
-    if (!audio) {
-      if (onComplete) onComplete();
-      return Promise.resolve();
-    }
-    
-    return new Promise((resolve) => {
-      if (fadeAnimationRef.current) {
-        fadeAnimationRef.current.kill();
-      }
-      
-      const currentVolume = audio.volume;
-      fadeAnimationRef.current = gsap.to({ value: currentVolume }, {
-        value: targetVolume,
-        duration: duration,
-        ease: 'power2.in',
-        onUpdate: function() {
-          if (audio && !audio.paused) {
-            audio.volume = this.targets()[0].value;
-          }
-        },
-        onComplete: () => {
-          if (audio) {
-            audio.volume = targetVolume;
-            // Solo pausar si el volumen objetivo es 0
-            if (targetVolume === 0) {
-              audio.pause();
-            }
-          }
-          fadeAnimationRef.current = null;
-          if (onComplete) onComplete();
-          resolve();
-        }
-      });
-    });
-  }, []);
-  
-  // Función centralizada para fade in
-  const fadeInAudio = useCallback((audio, duration = FADE_DURATION_NORMAL, targetVolume = 1.0) => {
-    if (!audio) return Promise.resolve();
-    
-    return new Promise((resolve) => {
-      if (fadeAnimationRef.current) {
-        fadeAnimationRef.current.kill();
-      }
-      
-      const currentVolume = audio.volume;
-      fadeAnimationRef.current = gsap.to({ value: currentVolume }, {
-        value: targetVolume,
-        duration: duration,
-        ease: 'power2.out',
-        onUpdate: function() {
-          if (audio) {
-            audio.volume = this.targets()[0].value;
-          }
-        },
-        onComplete: () => {
-          fadeAnimationRef.current = null;
-          resolve();
-        }
-      });
-    });
-  }, []);
   const [currentAudioIndex, setCurrentAudioIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0);
-  const [isSeeking, setIsSeeking] = useState(false); // Estado para indicar que estamos haciendo seek
   // Refs compartidos para AudioAnalyzer que se pasan a Background y Prompt
   const analyserRef = useRef(null);
   const dataArrayRef = useRef(null);
@@ -233,9 +158,9 @@ const Croquetas = () => {
   const handleAllComplete = useCallback(async () => {
     console.log('[Croquetas] Todas las subcarpetas completadas, volviendo a Intro');
     
-    // Fade out del audio antes de volver a Intro
+    // Primero pausar el audio si está disponible
     if (audioRef?.current && !audioRef.current.paused) {
-      await fadeOutAudio(audioRef.current, FADE_DURATION_SHORT);
+      audioRef.current.pause();
       setIsPlaying(false);
     }
     
@@ -277,9 +202,6 @@ const Croquetas = () => {
   const performCrossfade = useCallback(async (oldAudio, newSrc, targetTime = 0) => {
     if (!oldAudio || !audioFadeRef.current) return;
     
-    // Marcar que estamos en medio de un crossfade
-    isCrossfadingRef.current = true;
-    
     const newAudio = audioFadeRef.current;
     const wasPlaying = !oldAudio.paused;
     
@@ -313,14 +235,7 @@ const Croquetas = () => {
     });
     
     // Establecer el tiempo objetivo después de que esté listo
-    // Usar requestAnimationFrame para asegurar que el seek se aplique correctamente
-    if (isFinite(targetTime) && targetTime >= 0) {
-      requestAnimationFrame(() => {
-        if (newAudio && isFinite(targetTime) && targetTime >= 0) {
     newAudio.currentTime = targetTime;
-        }
-      });
-    }
     
     // Iniciar el nuevo audio si estaba reproduciéndose
     if (wasPlaying) {
@@ -331,8 +246,8 @@ const Croquetas = () => {
       }
     }
     
-    // Hacer crossfade más corto y rápido
-    const crossfadeDuration = CROSSFADE_DURATION;
+    // Hacer crossfade de 5 segundos
+    const crossfadeDuration = 5.0; // 5 segundos
     
     // Cancelar cualquier animación de fade anterior
     if (fadeAnimationRef.current) fadeAnimationRef.current.kill();
@@ -361,28 +276,17 @@ const Croquetas = () => {
         }
         
         // Copiar el estado del nuevo audio al principal
-        // NO cambiar el src aquí, solo el currentTime y volumen
-        // El src ya debería estar correcto porque el useEffect lo estableció
         if (audioRef.current && newAudio) {
           const wasNewAudioPlaying = !newAudio.paused;
           const newCurrentTime = newAudio.currentTime;
           const newVolume = newAudio.volume;
           
-          // Actualizar el src del audio principal al nuevo src
-          // Esto asegura que el audio principal tenga el src correcto después del crossfade
-          if (audioRef.current) {
-            audioRef.current.src = newAudio.src;
-            requestAnimationFrame(() => {
-              if (audioRef.current && isFinite(newCurrentTime) && newCurrentTime >= 0) {
-                audioRef.current.currentTime = newCurrentTime;
-              }
-              if (audioRef.current) {
-                audioRef.current.volume = newVolume;
-              }
-              if (wasNewAudioPlaying && audioRef.current.paused) {
-                audioRef.current.play().catch(() => {});
-              }
-            });
+          audioRef.current.src = newAudio.src;
+          audioRef.current.currentTime = newCurrentTime;
+          audioRef.current.volume = newVolume;
+          
+          if (wasNewAudioPlaying) {
+            audioRef.current.play().catch(() => {});
           }
         }
         
@@ -391,9 +295,6 @@ const Croquetas = () => {
         newAudio.currentTime = 0;
         newAudio.volume = 0;
         newAudio.src = '';
-        
-        // Marcar que el crossfade terminó
-        isCrossfadingRef.current = false;
       }
     });
   }, []);
@@ -413,35 +314,10 @@ const Croquetas = () => {
       }
     }
     
-    // Verificar si hay un seek pendiente desde Seek.js
-    const pendingSeekTime = typeof window !== 'undefined' ? window.__pendingSeekTime : null;
-    const pendingSeekWasPlaying = typeof window !== 'undefined' ? window.__pendingSeekWasPlaying : false;
-    const isSeekingFromWindow = typeof window !== 'undefined' ? window.__isSeeking : false;
-    
-    // Si estamos haciendo seek, actualizar el estado
-    if (isSeekingFromWindow && !isSeeking) {
-      setIsSeeking(true);
-      setIsLoaded(false);
-      setLoadingProgress(0);
-    }
-    
     // Si el src cambió, hacer crossfade si ya había un audio reproduciéndose
-    // Solo bloquear si estamos en medio de un crossfade Y el src ya es el correcto
-    const srcMatches = audio.src === finalSrc || audio.src.endsWith(finalSrc);
-    if (audio.src !== finalSrc && audio.src && audio.src !== '' && !audio.paused && !isCrossfadingRef.current) {
+    if (audio.src !== finalSrc && audio.src && audio.src !== '' && !audio.paused) {
       // Hay un audio reproduciéndose, hacer crossfade
-      // Si hay un seek pendiente, pasarlo al crossfade (validar que sea finito)
-      const seekTime = (pendingSeekTime !== null && isFinite(pendingSeekTime) && pendingSeekTime >= 0) 
-        ? Math.max(0, pendingSeekTime) 
-        : 0;
-      // NO limpiar pendingSeekTime aquí, el crossfade lo manejará
-      performCrossfade(audio, finalSrc, seekTime).then(() => {
-        // Limpiar después de que el crossfade se complete
-        if (typeof window !== 'undefined') {
-          window.__pendingSeekTime = null;
-          window.__pendingSeekWasPlaying = false;
-        }
-      });
+      performCrossfade(audio, finalSrc, 0);
       setIsLoaded(false);
       setLoadingProgress(0);
     } else if (audio.src !== finalSrc) {
@@ -449,147 +325,14 @@ const Croquetas = () => {
       audio.src = finalSrc;
       audio.volume = 1.0;
       audio.load();
-      
-      // Si hay un seek pendiente, establecerlo después de que el audio se cargue
-      if (pendingSeekTime !== null && isFinite(pendingSeekTime) && pendingSeekTime >= 0) {
-        const seekTime = Math.max(0, pendingSeekTime);
-        const handleSeekAfterLoad = () => {
-          audio.removeEventListener('canplay', handleSeekAfterLoad);
-          audio.removeEventListener('loadeddata', handleSeekAfterLoad);
-          // Asegurar que el seek se aplique correctamente después de que el audio esté listo
-          if (isFinite(seekTime) && seekTime >= 0 && audio.readyState >= 2) {
-            // Esperar un frame para asegurar que el audio esté completamente listo
-            requestAnimationFrame(() => {
-              if (audio && isFinite(seekTime) && seekTime >= 0) {
-                audio.currentTime = seekTime;
-              }
-            });
-          }
-          if (pendingSeekWasPlaying) {
-            audio.play().catch(() => {});
-          }
-          // Marcar como cargado y limpiar el flag de seek
-          setIsLoaded(true);
-          setIsSeeking(false);
-          if (typeof window !== 'undefined') {
-            window.__pendingSeekTime = null;
-            window.__pendingSeekWasPlaying = false;
-            window.__isSeeking = false;
-          }
-        };
-        
-        audio.addEventListener('canplay', handleSeekAfterLoad);
-        audio.addEventListener('loadeddata', handleSeekAfterLoad);
-        
-        // Si ya está listo, hacer seek inmediatamente
-        if (audio.readyState >= 2) {
-          // Esperar un frame para asegurar que el audio esté completamente listo
-          requestAnimationFrame(() => {
-            if (audio && isFinite(seekTime) && seekTime >= 0) {
-              audio.currentTime = seekTime;
-            }
-            if (pendingSeekWasPlaying) {
-              audio.play().catch(() => {});
-            }
-            // Marcar como cargado y limpiar el flag de seek
-            setIsLoaded(true);
-            setIsSeeking(false);
-            if (typeof window !== 'undefined') {
-              window.__pendingSeekTime = null;
-              window.__pendingSeekWasPlaying = false;
-              window.__isSeeking = false;
-            }
-          });
-        } else {
-          // El audio no está listo, mantener el flag de seek activo
-          setIsSeeking(true);
-        }
-      } else if (pendingSeekTime !== null) {
-        // Limpiar el seek pendiente si no es válido
-        if (typeof window !== 'undefined') {
-          window.__pendingSeekTime = null;
-          window.__pendingSeekWasPlaying = false;
-        }
-      }
-      
       setIsLoaded(false);
       setLoadingProgress(0);
-    } else if (audio.src === finalSrc || (audio.src && audio.src.endsWith(finalSrc))) {
-      // El src es el mismo (volver a un audio anterior), verificar si hay seek pendiente
-      if (pendingSeekTime !== null && isFinite(pendingSeekTime) && pendingSeekTime >= 0) {
-        // Hay un seek pendiente, verificar si el audio está suficientemente cargado
-        const seekTime = Math.max(0, pendingSeekTime);
-        if (audio.readyState >= 2) {
-          // El audio está listo, hacer seek directamente
-          // Esperar un frame para asegurar que el audio esté completamente listo
-          requestAnimationFrame(() => {
-            if (audio && isFinite(seekTime) && seekTime >= 0) {
-              audio.currentTime = seekTime;
-            }
-            if (pendingSeekWasPlaying && audio.paused) {
-              audio.play().catch(() => {});
-            }
-            setIsLoaded(true);
-            setIsSeeking(false);
-            if (typeof window !== 'undefined') {
-              window.__pendingSeekTime = null;
-              window.__pendingSeekWasPlaying = false;
-              window.__isSeeking = false;
-            }
-          });
-        } else {
-          // El audio no está listo, mostrar loading y esperar
-          setIsSeeking(true);
-          setIsLoaded(false);
-          setLoadingProgress(0);
-          
-          // Esperar a que el audio esté listo antes de hacer seek
-          const handleSeekWhenReady = () => {
-            audio.removeEventListener('canplay', handleSeekWhenReady);
-            audio.removeEventListener('loadeddata', handleSeekWhenReady);
-            // Esperar un frame para asegurar que el audio esté completamente listo
-            requestAnimationFrame(() => {
-              if (audio && isFinite(seekTime) && seekTime >= 0) {
-                audio.currentTime = seekTime;
-              }
-              if (pendingSeekWasPlaying && audio.paused) {
-                audio.play().catch(() => {});
-              }
-              setIsLoaded(true);
-              setIsSeeking(false);
-              if (typeof window !== 'undefined') {
-                window.__pendingSeekTime = null;
-                window.__pendingSeekWasPlaying = false;
-                window.__isSeeking = false;
-              }
-            });
-          };
-          
-          audio.addEventListener('canplay', handleSeekWhenReady);
-          audio.addEventListener('loadeddata', handleSeekWhenReady);
-        }
-      } else if (pendingSeekTime !== null) {
-        // Limpiar el seek pendiente si no es válido
-        setIsSeeking(false);
-        if (typeof window !== 'undefined') {
-          window.__pendingSeekTime = null;
-          window.__pendingSeekWasPlaying = false;
-          window.__isSeeking = false;
-        }
-      }
     }
     
     const handleCanPlay = () => {
       if (audio.readyState >= 2) {
         setIsLoaded(true);
         setLoadingProgress(100);
-        // Si estábamos haciendo seek, limpiar el flag
-        if (isSeeking) {
-          setIsSeeking(false);
-          if (typeof window !== 'undefined') {
-            window.__isSeeking = false;
-          }
-        }
       }
     };
     
@@ -597,47 +340,40 @@ const Croquetas = () => {
       if (audio.readyState >= 2) {
         setIsLoaded(true);
         setLoadingProgress(100);
-        // Si estábamos haciendo seek, limpiar el flag
-        if (isSeeking) {
-          setIsSeeking(false);
-          if (typeof window !== 'undefined') {
-            window.__isSeeking = false;
-          }
-        }
-      }
-    };
-    
-    const handleProgress = () => {
-      // Actualizar progreso de carga durante seek
-      if (isSeeking && audio.buffered.length > 0) {
-        const bufferedEnd = audio.buffered.end(audio.buffered.length - 1);
-        const duration = audio.duration || 1;
-        const progress = Math.min(100, Math.round((bufferedEnd / duration) * 100));
-        setLoadingProgress(progress);
-        
-        // Si el audio está suficientemente cargado, marcar como cargado
-        if (audio.readyState >= 2) {
-          setIsLoaded(true);
-          setIsSeeking(false);
-          if (typeof window !== 'undefined') {
-            window.__isSeeking = false;
-          }
-        }
       }
     };
     
     const handlePlay = () => {
-      // Fade in al reproducir usando función centralizada
+      // Fade in al reproducir
       if (audio && audio.volume < 1.0) {
-        fadeInAudio(audio, FADE_DURATION_NORMAL, 1.0);
+        if (fadeAnimationRef.current) fadeAnimationRef.current.kill();
+        fadeAnimationRef.current = gsap.to({ value: audio.volume }, {
+          value: 1.0,
+          duration: 0.5,
+          ease: 'power2.out',
+          onUpdate: function() {
+            if (audio) audio.volume = this.targets()[0].value;
+          }
+        });
       }
       setIsPlaying(true);
     };
     
     const handlePause = () => {
-      // Fade out al pausar usando función centralizada
+      // Fade out al pausar
       if (audio && audio.volume > 0) {
-        fadeOutAudio(audio, FADE_DURATION_NORMAL);
+        if (fadeAnimationRef.current) fadeAnimationRef.current.kill();
+        fadeAnimationRef.current = gsap.to({ value: audio.volume }, {
+          value: 0,
+          duration: 0.5,
+          ease: 'power2.in',
+          onUpdate: function() {
+            if (audio) audio.volume = this.targets()[0].value;
+          },
+          onComplete: () => {
+            if (audio) audio.pause();
+          }
+        });
       }
       setIsPlaying(false);
     };
@@ -670,7 +406,6 @@ const Croquetas = () => {
     audio.addEventListener('play', handlePlay);
     audio.addEventListener('pause', handlePause);
     audio.addEventListener('ended', handleEnded);
-    audio.addEventListener('progress', handleProgress);
     
     return () => {
       audio.removeEventListener('canplay', handleCanPlay);
@@ -678,9 +413,8 @@ const Croquetas = () => {
       audio.removeEventListener('play', handlePlay);
       audio.removeEventListener('pause', handlePause);
       audio.removeEventListener('ended', handleEnded);
-      audio.removeEventListener('progress', handleProgress);
     };
-  }, [currentAudioSrc, currentAudioIndex, audioSrcs, performCrossfade, fadeOutAudio, fadeInAudio, isSeeking]);
+  }, [currentAudioSrc, currentAudioIndex, audioSrcs, performCrossfade]);
   
   // Logging para debug en producción
 
@@ -720,7 +454,7 @@ const Croquetas = () => {
       }
     }
     
-      // Detectar iOS (especialmente Chrome en iOS)
+    // Detectar iOS (especialmente Chrome en iOS)
     if (typeof window === 'undefined' || typeof navigator === 'undefined') return;
       const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
       const isChromeIOS = isIOS && /CriOS/.test(navigator.userAgent);
@@ -938,83 +672,7 @@ const Croquetas = () => {
     triggerSquare('voice', { intensity, voiceEnergy });
   };
 
-  // Controles de teclado para audio
-  useEffect(() => {
-    if (!audioRef.current || !selectedTrack) return;
-    
-    const handleKeyDown = (e) => {
-      // Ignorar si el usuario está escribiendo en un input
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) {
-        return;
-      }
-      
-      const audio = audioRef.current;
-      if (!audio) return;
-      
-      switch (e.key) {
-        case 'ArrowLeft': {
-          e.preventDefault();
-          // Retroceder 5 segundos
-          if (audio.readyState >= 2 && audio.duration) {
-            const newTime = Math.max(0, audio.currentTime - 5);
-            requestAnimationFrame(() => {
-              if (audio && isFinite(newTime) && newTime >= 0) {
-                audio.currentTime = newTime;
-              }
-            });
-          }
-          break;
-        }
-        case 'ArrowRight': {
-          e.preventDefault();
-          // Avanzar 5 segundos
-          if (audio.readyState >= 2 && audio.duration) {
-            const newTime = Math.min(audio.duration, audio.currentTime + 5);
-            requestAnimationFrame(() => {
-              if (audio && isFinite(newTime) && newTime >= 0) {
-                audio.currentTime = newTime;
-              }
-            });
-          }
-          break;
-        }
-        case 'ArrowUp': {
-          e.preventDefault();
-          // Aumentar volumen
-          if (audio) {
-            const newVolume = Math.min(1, audio.volume + 0.1);
-            fadeInAudio(audio, 0.2, newVolume);
-          }
-          break;
-        }
-        case 'ArrowDown': {
-          e.preventDefault();
-          // Disminuir volumen
-          if (audio) {
-            const newVolume = Math.max(0, audio.volume - 0.1);
-            fadeOutAudio(audio, 0.2, newVolume);
-          }
-          break;
-        }
-        case ' ': {
-          e.preventDefault();
-          // Play/Pause
-          if (audio.paused) {
-            audio.play().catch(() => {});
-          } else {
-            audio.pause();
-          }
-          break;
-        }
-      }
-    };
-    
-    window.addEventListener('keydown', handleKeyDown);
-    
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [selectedTrack, audioRef, fadeInAudio, fadeOutAudio]);
+  // Controles de teclado para audio - se manejan dentro de AudioProvider
 
   // Verificar si hay un track pendiente en sessionStorage (durante navegación)
   useEffect(() => {
@@ -1047,64 +705,35 @@ const Croquetas = () => {
   );
   // Mostrar loading global solo cuando:
   // - Esté cargando tracks O
-  // - (Hay track seleccionado Y no se hizo fade out Y audio no iniciado) O
-  // - Estamos haciendo seek y el audio no está suficientemente cargado
+  // - (Hay track seleccionado Y no se hizo fade out Y audio no iniciado)
   // NO mostrar cuando no hay track seleccionado (URL principal después de cargar tracks)
-  const showGlobalLoading = tracksLoading || (selectedTrack && !loadingFadedOut && !audioStarted) || (isSeeking && !isLoaded);
-  
-  // Animar el loading con fade siempre
-  useEffect(() => {
-    if (!loadingRef.current) return;
-    
-    // Cancelar cualquier animación anterior
-    if (loadingFadeTweenRef.current) {
-      loadingFadeTweenRef.current.kill();
-    }
-    
-    if (showGlobalLoading) {
-      // Mostrar con fade in
-      loadingRef.current.style.display = 'flex';
-      loadingFadeTweenRef.current = gsap.to(loadingRef.current, {
-        opacity: 1,
-        duration: 0.5,
-        ease: 'power2.out'
-      });
-    } else {
-      // Ocultar con fade out
-      loadingFadeTweenRef.current = gsap.to(loadingRef.current, {
-        opacity: 0,
-        duration: 0.5,
-        ease: 'power2.in',
-        onComplete: () => {
-          if (loadingRef.current) {
-            loadingRef.current.style.display = 'none';
-          }
-        }
-      });
-    }
-    
-    return () => {
-      if (loadingFadeTweenRef.current) {
-        loadingFadeTweenRef.current.kill();
-      }
-    };
-  }, [showGlobalLoading]);
+  const showGlobalLoading = tracksLoading || (selectedTrack && !loadingFadedOut && !audioStarted);
 
   return (
     <div className="croquetas" onClick={handleClick}>
       {/* Loading global de KITT - siempre visible hasta que todo esté listo */}
       {/* Este loading está en el div principal para usar el fondo negro */}
-      <div 
-        ref={loadingRef}
-        className={`image-preloader ${showGlobalLoading ? 'image-preloader--visible' : 'image-preloader--hidden'}`}
-      >
+      {showGlobalLoading && (
+        <div className="image-preloader" style={{ 
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          display: 'flex',
+          opacity: 1,
+          zIndex: 5000,
+          background: 'transparent',
+          pointerEvents: 'none'
+        }}>
           <div className="image-preloader__content">
           <KITTLoader 
-            fast={globalLoadingProgress >= 95} 
-            progress={tracksLoading ? 0 : globalLoadingProgress} 
+              fast={globalLoadingProgress >= 95} 
+              progress={tracksLoading ? 0 : globalLoadingProgress} 
           />
           </div>
         </div>
+      )}
       
       {!tracksLoading && tracks.length > 0 && (
         <Intro 
@@ -1202,23 +831,22 @@ const Croquetas = () => {
           {/* Mostrar BackButton siempre si es URI directa (incluso antes de seleccionar track), o cuando audioStarted */}
           {isDirectUri || audioStarted ? (
             <BackButton 
-              onBack={async () => {
-                // Fade out del audio antes de volver
+              onBack={() => {
                 if (audioRef?.current && !audioRef.current.paused) {
-                  await fadeOutAudio(audioRef.current, FADE_DURATION_SHORT);
+                  audioRef.current.pause();
+                  setIsPlaying(false);
                 }
                 setAudioStarted(false);
                 setSelectedTrack(null);
                 setShowStartButton(false);
                 setWasSelectedFromIntro(false);
                 setLoadingFadedOut(false);
-                setIsPlaying(false);
               }}
               audioRef={audioRef}
             />
           ) : null}
-          <audio ref={audioRef} crossOrigin="anonymous" playsInline volume={1.0} className="audio-hidden" />
-          <audio ref={audioFadeRef} crossOrigin="anonymous" playsInline volume={0} className="audio-hidden" />
+          <audio ref={audioRef} crossOrigin="anonymous" playsInline volume={1.0} style={{ display: 'none' }} />
+          <audio ref={audioFadeRef} crossOrigin="anonymous" playsInline volume={0} style={{ display: 'none' }} />
         </>
       ) : (
         // Cuando no hay track seleccionado, mostrar solo diagonales

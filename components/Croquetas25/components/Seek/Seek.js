@@ -125,37 +125,40 @@ const Seek = ({ squares, seekToImagePosition, selectedTrack, audioRef, currentAu
         const audio = audioRef.current;
         const wasPlaying = !audio.paused;
         
-        // Almacenar el tiempo de seek pendiente en el componente padre
-        // Esto se hace a través de una propiedad o ref compartido
-        // Por ahora, usaremos un enfoque diferente: pasar el tiempo como parte del cambio
-        // El useEffect en Croquetas.jsx manejará el seek después de cambiar el src
-        
         // Cambiar el índice - esto activará el useEffect que cambiará el src
-        // Necesitamos pasar el targetTime de alguna manera
-        // Usaremos window temporalmente para pasar el seek time
-        if (typeof window !== 'undefined') {
-          window.__pendingSeekTime = targetTime;
-          window.__pendingSeekWasPlaying = wasPlaying;
-          window.__isSeeking = true; // Indicar que estamos haciendo seek
-        }
-        
         setCurrentAudioIndex(targetAudioIndex);
+        
+        // Esperar a que el audio se cargue y luego hacer seek
+        // Usar un pequeño delay para asegurar que el useEffect haya cambiado el src
+        setTimeout(() => {
+          if (audioRef?.current) {
+            const newAudio = audioRef.current;
+            // Esperar a que el audio esté listo antes de hacer seek
+            const handleCanSeek = () => {
+              newAudio.removeEventListener('canplay', handleCanSeek);
+              newAudio.removeEventListener('loadeddata', handleCanSeek);
+              newAudio.currentTime = targetTime;
+              if (wasPlaying) {
+                newAudio.play().catch(() => {});
+              }
+            };
+            
+            newAudio.addEventListener('canplay', handleCanSeek);
+            newAudio.addEventListener('loadeddata', handleCanSeek);
+            
+            // Si ya está listo, hacer seek inmediatamente
+            if (newAudio.readyState >= 2) {
+              newAudio.currentTime = targetTime;
+              if (wasPlaying) {
+                newAudio.play().catch(() => {});
+              }
+            }
+          }
+        }, 50);
       } else {
         // Mismo audio, solo hacer seek
         const audio = audioRef.current;
-        // Verificar si el audio está suficientemente cargado para hacer seek
-        if (audio.readyState < 2) {
-          // El audio no está suficientemente cargado, mostrar loading
-          if (typeof window !== 'undefined') {
-            window.__isSeeking = true;
-          }
-        }
-        // Usar requestAnimationFrame para asegurar que el seek se aplique correctamente
-        requestAnimationFrame(() => {
-          if (audio && isFinite(targetTime) && targetTime >= 0) {
-            audio.currentTime = targetTime;
-          }
-        });
+        audio.currentTime = targetTime;
       }
       
       // Usar tiempos auxiliares para reposicionar imágenes ANTES de hacer seek del audio
@@ -174,20 +177,8 @@ const Seek = ({ squares, seekToImagePosition, selectedTrack, audioRef, currentAu
         seekToImagePosition(targetTime, selectedTrack);
       }
       
-      // Verificar si el audio está suficientemente cargado para hacer seek
-      if (audio.readyState < 2) {
-        // El audio no está suficientemente cargado, mostrar loading
-        if (typeof window !== 'undefined') {
-          window.__isSeeking = true;
-        }
-      }
-      
-      // Hacer seek en el audio usando requestAnimationFrame para asegurar que se aplique correctamente
-      requestAnimationFrame(() => {
-        if (audio && isFinite(targetTime) && targetTime >= 0) {
-          audio.currentTime = targetTime;
-        }
-      });
+      // Hacer seek en el audio
+      audio.currentTime = targetTime;
     }
   };
 
