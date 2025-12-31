@@ -219,12 +219,22 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
         el.animated = true;
         
         const intensity = square.data?.intensity ?? 0.5;
-        const baseDuration = square.type === 'beat' ? 6 : 5; // Ajustado: más rápido que antes (8/7) pero más lento que la versión anterior (4/3.5)
-        const duration = baseDuration - (intensity * 3); // Factor de intensidad ajustado
+        const isTarget = square.isTarget;
+        
+        // Duración diferente para cuadros con imagen vs cuadros con borde (sin imagen)
+        // Los cuadros con borde son más lentos
+        let baseDuration;
+        if (isTarget) {
+          // Cuadros con imagen: duración normal
+          baseDuration = square.type === 'beat' ? 10 : 8;
+        } else {
+          // Cuadros con borde (sin imagen): duración más larga para desplazamiento más lento
+          baseDuration = square.type === 'beat' ? 15 : 12;
+        }
+        const duration = baseDuration - (intensity * 2); // Factor de intensidad ajustado (menos reducción)
         
         try {
           const timeline = gsap.timeline();
-          const isTarget = square.isTarget;
           
           animationTimelinesRef.current[square.id] = timeline;
           

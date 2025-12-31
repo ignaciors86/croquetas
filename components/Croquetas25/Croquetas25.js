@@ -460,7 +460,7 @@ const Croquetas25 = () => {
             selectedTrack={selectedTrack}
             loadingFadedOut={loadingFadedOut}
           />
-          <AudioStarter audioStarted={audioStarted} />
+          <AudioStarter audioStarted={audioStarted} wasSelectedFromIntro={wasSelectedFromIntro} />
           <HoldToPauseHandler 
             isPausedByHold={isPausedByHold}
             setIsPausedByHold={setIsPausedByHold}
@@ -468,7 +468,7 @@ const Croquetas25 = () => {
             typewriterInstanceRef={typewriterInstanceRef}
           />
           <LoadingProgressHandler onTriggerCallbackRef={triggerCallbackRef} audioStarted={audioStarted} />
-          <AudioAnalyzer onBeat={handleBeat} onVoice={handleVoice} />
+          <AudioAnalyzerWrapper onBeat={handleBeat} onVoice={handleVoice} />
           <SeekWrapper />
           {audioStarted && selectedTrack && (
             <SubfolderAudioController selectedTrack={selectedTrack} />
@@ -501,7 +501,7 @@ const Croquetas25 = () => {
   );
 };
 
-const AudioStarter = ({ audioStarted }) => {
+const AudioStarter = ({ audioStarted, wasSelectedFromIntro }) => {
   const { play, isLoaded, audioRef, audioContextRef } = useAudio();
   const hasAttemptedPlayRef = useRef(false);
 
@@ -571,22 +571,26 @@ const AudioStarter = ({ audioStarted }) => {
     }
   }, [audioStarted, isLoaded, play, audioRef, audioContextRef]);
 
-  // Listener para inicializar AudioContext en móviles cuando viene de la home
+  // Listener para inicializar AudioContext en móviles - SIEMPRE activo en móviles
   useEffect(() => {
-    if (!wasSelectedFromIntro || !audioStarted) return;
-    
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
     const isAndroid = /Android/.test(navigator.userAgent);
     const isMobile = isIOS || isAndroid;
     
     if (!isMobile) return;
     
+    let hasResumed = false;
+    
     const initializeAudioContextOnTouch = async (e) => {
+      // Solo intentar una vez para evitar múltiples intentos
+      if (hasResumed) return;
+      
       const audioContext = audioContextRef?.current || window.__globalAudioContext;
       
       if (audioContext && audioContext.state === 'suspended') {
         try {
           await audioContext.resume();
+          hasResumed = true;
           console.log('[AudioInitializer] AudioContext resumido desde evento táctil');
           
           // Si el audio está pausado y debería estar reproduciéndose, intentar reproducirlo
@@ -601,21 +605,25 @@ const AudioStarter = ({ audioStarted }) => {
         } catch (err) {
           console.warn('[AudioInitializer] Error resumiendo AudioContext desde evento táctil:', err);
         }
+      } else if (audioContext && audioContext.state === 'running') {
+        // Si ya está corriendo, marcar como resumido
+        hasResumed = true;
       }
     };
     
     // Escuchar eventos táctiles y de clic para inicializar AudioContext
-    const events = ['touchstart', 'touchend', 'click'];
+    // Usar capture phase para capturar antes que otros listeners
+    const events = ['touchstart', 'touchend', 'click', 'mousedown'];
     events.forEach(eventType => {
-      document.addEventListener(eventType, initializeAudioContextOnTouch, { once: true, passive: true });
+      document.addEventListener(eventType, initializeAudioContextOnTouch, { capture: true, passive: true });
     });
     
     return () => {
       events.forEach(eventType => {
-        document.removeEventListener(eventType, initializeAudioContextOnTouch);
+        document.removeEventListener(eventType, initializeAudioContextOnTouch, { capture: true });
       });
     };
-  }, [wasSelectedFromIntro, audioStarted, audioContextRef, audioRef, play]);
+  }, [audioStarted, audioContextRef, audioRef, play]);
 
   return null;
 };
@@ -939,8 +947,23 @@ const DiagonalesOnly = () => {
   );
 };
 
+const AudioAnalyzerWrapper = ({ onBeat, onVoice }) => {
+  const { audioRef, analyserRef, dataArrayRef, isInitialized } = useAudio();
+  
+  return (
+    <AudioAnalyzer 
+      onBeat={onBeat} 
+      onVoice={onVoice}
+      audioRef={audioRef}
+      analyserRef={analyserRef}
+      dataArrayRef={dataArrayRef}
+      setIsInitialized={isInitialized ? (() => {}) : undefined}
+    />
+  );
+};
+
 const SeekWrapper = ({ selectedTrack }) => {
-  const { analyserRef } = useAudio();
+  const { analyserRef, audioRef, currentIndex, seekToAudio } = useAudio();
   const [squares, setSquares] = useState([]);
   const { seekToImagePosition } = useGallery(selectedTrack, null, null, null);
   
@@ -959,7 +982,25 @@ const SeekWrapper = ({ selectedTrack }) => {
     return () => clearInterval(interval);
   }, []);
   
-  return <Seek squares={squares} seekToImagePosition={seekToImagePosition} selectedTrack={selectedTrack} />;
+  // Obtener audioSrcs del selectedTrack
+  const audioSrcs = selectedTrack?.srcs || (selectedTrack?.src ? [selectedTrack.src] : []);
+  
+  // Función para cambiar el índice de audio
+  const setCurrentAudioIndex = (index) => {
+    seekToAudio(index, 0);
+  };
+  
+  return (
+    <Seek 
+      squares={squares} 
+      seekToImagePosition={seekToImagePosition} 
+      selectedTrack={selectedTrack}
+      audioRef={audioRef}
+      currentAudioIndex={currentIndex}
+      audioSrcs={audioSrcs}
+      setCurrentAudioIndex={setCurrentAudioIndex}
+    />
+  );
 };
 
 // Componente para gestionar el guión según la subcarpeta actual

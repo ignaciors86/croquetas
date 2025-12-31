@@ -289,6 +289,47 @@ export const AudioProvider = ({ children, audioSrcs = [] }) => {
     }
   };
 
+  // Listener global para resumir AudioContext en móviles - añadido temprano
+  useEffect(() => {
+    const isIOS = typeof window !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    const isAndroid = typeof window !== 'undefined' && /Android/.test(navigator.userAgent);
+    const isMobile = isIOS || isAndroid;
+    
+    if (!isMobile) return;
+    
+    let hasResumed = false;
+    
+    const resumeOnUserInteraction = async () => {
+      // Solo intentar una vez para evitar múltiples intentos
+      if (hasResumed) return;
+      
+      const audioContext = audioContextRef?.current || globalAudioContext || window.__globalAudioContext;
+      
+      if (audioContext && audioContext.state === 'suspended') {
+        try {
+          await audioContext.resume();
+          hasResumed = true;
+          console.log('[AudioContext] AudioContext resumido desde interacción global del usuario (móvil)');
+        } catch (err) {
+          console.warn('[AudioContext] Error resumiendo AudioContext desde interacción global:', err);
+        }
+      } else if (audioContext && audioContext.state === 'running') {
+        hasResumed = true;
+      }
+    };
+    
+    // Añadir listeners con capture para capturar antes que otros
+    document.addEventListener('touchstart', resumeOnUserInteraction, { capture: true, passive: true });
+    document.addEventListener('click', resumeOnUserInteraction, { capture: true, passive: true });
+    document.addEventListener('mousedown', resumeOnUserInteraction, { capture: true, passive: true });
+    
+    return () => {
+      document.removeEventListener('touchstart', resumeOnUserInteraction, { capture: true });
+      document.removeEventListener('click', resumeOnUserInteraction, { capture: true });
+      document.removeEventListener('mousedown', resumeOnUserInteraction, { capture: true });
+    };
+  }, []); // Solo ejecutar una vez al montar
+
   // Cargar duraciones de todos los audios
   useEffect(() => {
     // Resetear estado de pre-carga cuando cambian los audios
@@ -810,6 +851,8 @@ export const AudioProvider = ({ children, audioSrcs = [] }) => {
           globalSourceNode.connect(globalAnalyser);
           globalAnalyser.connect(globalAudioContext.destination);
 
+          // En móviles, el AudioContext puede estar suspendido y necesita ser resumido por interacción del usuario
+          // Intentar resumir, pero si falla, los listeners de eventos del usuario lo harán
           if (globalAudioContext.state === 'suspended') {
             try {
               await globalAudioContext.resume();
@@ -829,18 +872,32 @@ export const AudioProvider = ({ children, audioSrcs = [] }) => {
                     console.warn(`[AudioContext] Error resuming AudioContext (intento ${i + 1}):`, e);
                   }
                 }
-              } else if (globalAudioContext.state === 'suspended') {
-                setTimeout(async () => {
-                  try {
-                    await globalAudioContext.resume();
-                  } catch (e) {
-                    console.warn('[AudioContext] Error resuming AudioContext (retry):', e);
-                  }
-                }, 100);
               }
             } catch (resumeError) {
-              console.warn('[AudioContext] Error resuming AudioContext:', resumeError);
+              // En móviles, es normal que falle aquí - los listeners de eventos del usuario lo resumirán
+              console.log('[AudioContext] AudioContext suspendido (normal en móviles), será resumido por interacción del usuario');
             }
+          }
+          
+          // Añadir listener global para resumir AudioContext en cualquier interacción del usuario (móviles)
+          if (typeof window !== 'undefined' && (isIOS || isAndroid)) {
+            const resumeOnUserInteraction = async () => {
+              if (globalAudioContext && globalAudioContext.state === 'suspended') {
+                try {
+                  await globalAudioContext.resume();
+                  console.log('[AudioContext] AudioContext resumido desde interacción del usuario');
+                  // Remover el listener después de resumir exitosamente
+                  document.removeEventListener('touchstart', resumeOnUserInteraction, { capture: true });
+                  document.removeEventListener('click', resumeOnUserInteraction, { capture: true });
+                } catch (err) {
+                  console.warn('[AudioContext] Error resumiendo AudioContext desde interacción:', err);
+                }
+              }
+            };
+            
+            // Añadir listeners con capture para capturar antes que otros
+            document.addEventListener('touchstart', resumeOnUserInteraction, { capture: true, passive: true, once: true });
+            document.addEventListener('click', resumeOnUserInteraction, { capture: true, passive: true, once: true });
           }
 
           audioContextRef.current = globalAudioContext;
