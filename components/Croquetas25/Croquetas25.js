@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
 import { gsap } from 'gsap';
 import './Croquetas25.scss';
 import Background from './components/Background/Background';
@@ -28,13 +27,10 @@ const LoadingProgressHandler = ({ onTriggerCallbackRef, audioStarted }) => {
 };
 
 const Croquetas25 = () => {
-  const { trackId } = useParams();
-  const navigate = useNavigate();
   const [audioStarted, setAudioStarted] = useState(false);
   const [selectedTrack, setSelectedTrack] = useState(null);
   const [isPausedByHold, setIsPausedByHold] = useState(false);
   const [showStartButton, setShowStartButton] = useState(false);
-  const [wasSelectedFromIntro, setWasSelectedFromIntro] = useState(false);
   const [loadingFadedOut, setLoadingFadedOut] = useState(false);
   const wasPlayingBeforeHoldRef = useRef(false);
   const startButtonRef = useRef(null);
@@ -46,40 +42,56 @@ const Croquetas25 = () => {
   
   const { tracks, isLoading: tracksLoading } = useTracks();
   
-  // Detectar si viene de la home y inicializar AudioContext en móviles
+  // Detectar trackId desde la URL inicial (sin navegación real)
+  const getTrackIdFromUrl = useCallback(() => {
+    if (typeof window === 'undefined') return null;
+    const pathname = window.location.pathname;
+    // Buscar patrón /nachitos-de-nochevieja/[trackId] o /[trackId]
+    const match = pathname.match(/\/(?:nachitos-de-nochevieja\/)?([^\/]+)$/);
+    if (match && match[1] && match[1] !== 'nachitos-de-nochevieja') {
+      return match[1];
+    }
+    return null;
+  }, []);
+  
+  const [trackIdFromUrl, setTrackIdFromUrl] = useState(() => getTrackIdFromUrl());
+  
+  // Detectar cambios en la URL (para cuando el usuario navega manualmente o usa botón atrás)
   useEffect(() => {
     if (typeof window === 'undefined') return;
     
-    // Verificar si viene de la home desde sessionStorage
-    const wasFromIntro = sessionStorage.getItem('wasSelectedFromIntro') === 'true';
-    if (wasFromIntro) {
-      setWasSelectedFromIntro(true);
-      sessionStorage.removeItem('wasSelectedFromIntro');
-    }
+    const handlePopState = () => {
+      const newTrackId = getTrackIdFromUrl();
+      setTrackIdFromUrl(newTrackId);
+    };
     
-    // Si viene de la home, intentar inicializar AudioContext inmediatamente en móviles
-    if (wasFromIntro) {
-      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-      const isAndroid = /Android/.test(navigator.userAgent);
-      const isMobile = isIOS || isAndroid;
-      
-      if (isMobile) {
-        // Intentar inicializar AudioContext después de un breve delay
-        // para asegurar que el componente esté montado
-        setTimeout(() => {
-          const audioContext = window.__globalAudioContext;
-          if (audioContext && audioContext.state === 'suspended') {
-            // Intentar resumir, pero si falla, el listener táctil lo hará
-            audioContext.resume().then(() => {
-              console.log('[Croquetas25] AudioContext resumido al detectar navegación desde home');
-            }).catch(err => {
-              console.warn('[Croquetas25] AudioContext no pudo resumirse automáticamente, esperando evento de usuario:', err);
-            });
-          }
-        }, 100);
-      }
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [getTrackIdFromUrl]);
+  
+  // Seleccionar track automáticamente si hay trackId en la URL
+  useEffect(() => {
+    if (!trackIdFromUrl || tracksLoading || tracks.length === 0) return;
+    
+    const normalizedTrackId = trackIdFromUrl.toLowerCase().replace(/\s+/g, '-');
+    const foundTrack = tracks.find(track => {
+      const normalizedId = (track.id || track.name.toLowerCase().replace(/\s+/g, '-'));
+      return normalizedId === normalizedTrackId;
+    });
+    
+    if (foundTrack && (!selectedTrack || selectedTrack.id !== foundTrack.id)) {
+      setSelectedTrack(foundTrack);
+      setAudioStarted(false);
+      setShowStartButton(false);
+      setLoadingFadedOut(false);
+    } else if (!foundTrack && selectedTrack) {
+      // Si no se encuentra el track en la URL, limpiar selección
+      setSelectedTrack(null);
+      setAudioStarted(false);
+      setShowStartButton(false);
+      setLoadingFadedOut(false);
     }
-  }, []);
+  }, [trackIdFromUrl, tracks, tracksLoading, selectedTrack]);
   
   // Callback para cuando se completa una subcarpeta - cambiar al siguiente audio
   const handleSubfolderComplete = useCallback((completedSubfolder) => {
@@ -121,18 +133,19 @@ const Croquetas25 = () => {
       await handleAllCompleteRef.current();
     }
     
-    // Luego detener todo y volver a la home
+    // Luego detener todo y volver a la home (sin navegación real)
     setAudioStarted(false);
     setSelectedTrack(null);
     setShowStartButton(false);
-    setWasSelectedFromIntro(false);
     setLoadingFadedOut(false);
     
-    // Navegar inmediatamente (igual que el botón de volver)
-    console.log('[Croquetas25] Navegando a /nachitos-de-nochevieja');
-    navigate('/nachitos-de-nochevieja', { replace: true });
-    console.log('[Croquetas25] Navegación iniciada');
-  }, [navigate]);
+    // Falsificar URL sin navegar realmente
+    if (typeof window !== 'undefined') {
+      const basePath = '/nachitos-de-nochevieja';
+      window.history.pushState({ trackId: null }, '', basePath);
+      setTrackIdFromUrl(null);
+    }
+  }, []);
   
   // Componente que maneja el completado dentro de AudioProvider para poder pausar el audio
   const AllCompleteHandler = () => {
@@ -158,7 +171,7 @@ const Croquetas25 = () => {
   
   const { isLoading: imagesLoading, preloadProgress: imagesProgress, seekToImagePosition } = useGallery(selectedTrack, handleSubfolderComplete, handleAllComplete);
   const audioSrcs = selectedTrack?.srcs || (selectedTrack?.src ? [selectedTrack.src] : []);
-  const isDirectUri = !!trackId;
+  const isDirectUri = !!trackIdFromUrl;
   
   // Logging para debug en producción
   useEffect(() => {
@@ -175,16 +188,15 @@ const Croquetas25 = () => {
     setSelectedTrack(track);
     setAudioStarted(false);
     setShowStartButton(false);
-    setWasSelectedFromIntro(true);
     setLoadingFadedOut(false);
     
-    // Guardar en sessionStorage para preservar durante la navegación
+    // Falsificar URL sin navegar realmente
     if (typeof window !== 'undefined') {
-      sessionStorage.setItem('wasSelectedFromIntro', 'true');
+      const trackIdForUrl = track.id || track.name.toLowerCase().replace(/\s+/g, '-');
+      const newPath = `/nachitos-de-nochevieja/${trackIdForUrl}`;
+      window.history.pushState({ trackId: trackIdForUrl }, '', newPath);
+      setTrackIdFromUrl(trackIdForUrl);
     }
-    
-    const trackIdForUrl = track.id || track.name.toLowerCase().replace(/\s+/g, '-');
-    navigate(`/nachitos-de-nochevieja/${trackIdForUrl}`, { replace: true });
   };
 
   const handleClick = async (e) => {
@@ -416,10 +428,10 @@ const Croquetas25 = () => {
         <Intro 
           tracks={tracks} 
           onTrackSelect={handleTrackSelect}
-          onStartPlayback={isDirectUri && !wasSelectedFromIntro && selectedTrack ? handleClick : null}
-          selectedTrackId={trackId ? trackId.toLowerCase().replace(/\s+/g, '-') : 'nachitos-de-nochevieja'}
+          onStartPlayback={isDirectUri && selectedTrack ? handleClick : null}
+          selectedTrackId={trackIdFromUrl ? trackIdFromUrl.toLowerCase().replace(/\s+/g, '-') : 'nachitos-de-nochevieja'}
           isDirectUri={isDirectUri}
-          isVisible={!selectedTrack || (isDirectUri && !wasSelectedFromIntro && !audioStarted)}
+          isVisible={!selectedTrack || (isDirectUri && !audioStarted)}
           keepBlurVisible={selectedTrack && audioStarted}
         />
       )}
@@ -454,13 +466,12 @@ const Croquetas25 = () => {
             showStartButton={showStartButton}
             setShowStartButton={setShowStartButton}
             isDirectUri={isDirectUri}
-            wasSelectedFromIntro={wasSelectedFromIntro}
             startButtonRef={startButtonRef}
             handleClick={handleClick}
             selectedTrack={selectedTrack}
             loadingFadedOut={loadingFadedOut}
           />
-          <AudioStarter audioStarted={audioStarted} wasSelectedFromIntro={wasSelectedFromIntro} />
+          <AudioStarter audioStarted={audioStarted} />
           <HoldToPauseHandler 
             isPausedByHold={isPausedByHold}
             setIsPausedByHold={setIsPausedByHold}
@@ -487,8 +498,13 @@ const Croquetas25 = () => {
                 setAudioStarted(false);
                 setSelectedTrack(null);
                 setShowStartButton(false);
-                setWasSelectedFromIntro(false);
                 setLoadingFadedOut(false);
+                // Falsificar URL sin navegar realmente
+                if (typeof window !== 'undefined') {
+                  const basePath = '/nachitos-de-nochevieja';
+                  window.history.pushState({ trackId: null }, '', basePath);
+                  setTrackIdFromUrl(null);
+                }
               }}
             />
           ) : null}
@@ -501,7 +517,7 @@ const Croquetas25 = () => {
   );
 };
 
-const AudioStarter = ({ audioStarted, wasSelectedFromIntro }) => {
+const AudioStarter = ({ audioStarted }) => {
   const { play, isLoaded, audioRef, audioContextRef } = useAudio();
   const hasAttemptedPlayRef = useRef(false);
 
@@ -787,7 +803,6 @@ const UnifiedContentManager = ({
   showStartButton,
   setShowStartButton,
   isDirectUri,
-  wasSelectedFromIntro,
   startButtonRef,
   handleClick,
   selectedTrack,
@@ -825,19 +840,20 @@ const UnifiedContentManager = ({
   useEffect(() => {
     if (!everythingReady || !loadingFadedOut) return;
     
-    if (isDirectUri && !wasSelectedFromIntro) {
+    if (isDirectUri) {
+      // Si hay trackId en la URL, mostrar botón de inicio
       if (!showStartButton && !audioStarted) {
         setShowStartButton(true);
       }
     } else {
+      // Si no hay trackId, iniciar automáticamente cuando todo esté listo
       if (showStartButton) {
         setShowStartButton(false);
       }
       if (!audioStarted && everythingReady && loadingFadedOut) {
-        // En móviles, especialmente cuando viene de la home, necesitamos inicializar el AudioContext
+        // En móviles, necesitamos inicializar el AudioContext
         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
         const isAndroid = /Android/.test(navigator.userAgent);
-        const isChromeIOS = isIOS && /CriOS/.test(navigator.userAgent);
         const isMobile = isIOS || isAndroid;
         
         if (isMobile) {
@@ -845,15 +861,13 @@ const UnifiedContentManager = ({
           
           // Si el AudioContext existe pero está suspendido, intentar resumirlo
           if (audioContext && audioContext.state === 'suspended') {
-            // En móviles, cuando viene de la home, el evento de usuario se pierde
             // Intentar resumir el AudioContext, pero si falla, esperar al primer toque
             audioContext.resume().then(() => {
-              console.log('[UnifiedContentManager] AudioContext resumido antes de iniciar audio (desde home)');
+              console.log('[UnifiedContentManager] AudioContext resumido antes de iniciar audio');
               setAudioStarted(true);
             }).catch(err => {
-              console.warn('[UnifiedContentManager] Error resumiendo AudioContext (desde home):', err);
+              console.warn('[UnifiedContentManager] Error resumiendo AudioContext:', err);
               // Si falla, esperar al primer toque del usuario para inicializar
-              // Esto se manejará en el listener de eventos táctiles
               setAudioStarted(true); // Continuar de todas formas, el audio se iniciará en el primer toque
             });
           } else if (!audioContext) {
@@ -869,10 +883,10 @@ const UnifiedContentManager = ({
         }
       }
     }
-  }, [everythingReady, loadingFadedOut, isDirectUri, showStartButton, audioStarted, wasSelectedFromIntro, setShowStartButton, setAudioStarted, audioContextRef]);
+  }, [everythingReady, loadingFadedOut, isDirectUri, showStartButton, audioStarted, setShowStartButton, setAudioStarted, audioContextRef]);
   
   useEffect(() => {
-    if (isDirectUri && !wasSelectedFromIntro && everythingReady && loadingFadedOut && showStartButton && !audioStarted) {
+    if (isDirectUri && everythingReady && loadingFadedOut && showStartButton && !audioStarted) {
       if (!buttonAnimationStartedRef.current && buttonRef.current) {
         buttonAnimationStartedRef.current = true;
         gsap.fromTo(buttonRef.current, 
@@ -883,13 +897,13 @@ const UnifiedContentManager = ({
     } else {
       buttonAnimationStartedRef.current = false;
     }
-  }, [isDirectUri, wasSelectedFromIntro, everythingReady, loadingFadedOut, showStartButton, audioStarted]);
+  }, [isDirectUri, everythingReady, loadingFadedOut, showStartButton, audioStarted]);
   
   useEffect(() => {
     buttonAnimationStartedRef.current = false;
   }, [selectedTrack]);
   
-  if (!(isDirectUri && !wasSelectedFromIntro && everythingReady && loadingFadedOut && showStartButton && !audioStarted)) {
+  if (!(isDirectUri && everythingReady && loadingFadedOut && showStartButton && !audioStarted)) {
     return null;
   }
   
