@@ -280,6 +280,59 @@ const Diagonales = ({ squares, analyserRef, dataArrayRef, isInitialized, onVoice
     });
   }, [isInitialized, diagonales]);
 
+  // Limpiar diagonales fuera de pantalla periódicamente
+  useEffect(() => {
+    if (!isInitialized) return;
+    
+    const cleanupInterval = setInterval(() => {
+      setDiagonales(prev => {
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+        // Margen adicional para considerar elementos que están saliendo
+        const margin = 500; // Más margen para diagonales que pueden ser largas
+        
+        const visibleDiagonales = prev.filter(diag => {
+          // Las diagonales fijas nunca se eliminan
+          if (diag.isFixed) return true;
+          
+          const el = diagonalRefs.current[diag.id];
+          if (!el) return false; // Si no hay elemento, eliminar del estado
+          
+          const rect = el.getBoundingClientRect();
+          // Verificar si el elemento está completamente fuera de la pantalla (con margen)
+          const isOutOfBounds = 
+            rect.right < -margin ||
+            rect.left > viewportWidth + margin ||
+            rect.bottom < -margin ||
+            rect.top > viewportHeight + margin;
+          
+          // También verificar si la opacidad es 0 (ya desapareció visualmente)
+          const computedStyle = window.getComputedStyle(el);
+          const opacity = parseFloat(computedStyle.opacity) || 0;
+          
+          if (isOutOfBounds || opacity <= 0.01) {
+            // Limpiar animaciones y referencias
+            if (rotationTimelinesRef.current[diag.id]) {
+              rotationTimelinesRef.current[diag.id].kill();
+              delete rotationTimelinesRef.current[diag.id];
+            }
+            
+            delete diagonalRefs.current[diag.id];
+            delete rotationRefs.current[diag.id];
+            removingDiagonalsRef.current.delete(diag.id);
+            return false; // Eliminar del array
+          }
+          
+          return true; // Mantener en el array
+        });
+        
+        return visibleDiagonales;
+      });
+    }, 3000); // Verificar cada 3 segundos
+    
+    return () => clearInterval(cleanupInterval);
+  }, [isInitialized]);
+  
   // Animar rotación y desvanecimiento de diagonales
   useEffect(() => {
     if (!isInitialized || diagonales.length === 0) {

@@ -83,6 +83,9 @@ const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstance
   const handleTypewriterComplete = (completedTextIndex) => {
     setIsTyping(false);
     
+    // Tiempo fijo de visualización después de que termine de escribir (5 segundos)
+    const FIXED_DISPLAY_DURATION = 5000;
+    
     setTimeout(() => {
       const timePerText = duration > 0 && textos.length > 0 ? duration / textos.length : 0;
       const currentTimeBasedIndex = timePerText > 0 
@@ -91,14 +94,39 @@ const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstance
       
       const hasMoreText = currentTimeBasedIndex > completedTextIndex;
       const hasEnded = duration > 0 && currentTime >= duration;
+      const isLastText = completedTextIndex >= textos.length - 1;
       
-      if (!hasMoreText && !hasEnded && isVisible && promptRef.current && 
-          currentTimeBasedIndex === completedTextIndex) {
-        const fadeOutProps = { opacity: 0, y: 20, duration: 0.4, ease: 'power2.in' };
+      // Solo hacer fade-out si:
+      // 1. No hay más texto Y no ha terminado la duración total (último texto antes del final)
+      // 2. O es el último texto y ha terminado la duración
+      if (isVisible && promptRef.current && !hasMoreText && !hasEnded && isLastText) {
+        // Hacer fade-out suave
+        const fadeOutProps = { 
+          opacity: 0, 
+          y: 20, 
+          duration: 0.8, // Aumentado de 0.4 a 0.8 para fade-out más lento
+          ease: 'power2.in',
+          onComplete: () => {
+            setIsIntentionallyHidden(true);
+            setIsVisible(false);
+          }
+        };
         gsap.to(promptRef.current, fadeOutProps);
-        setIsIntentionallyHidden(true);
+      } else if (hasEnded && isVisible && promptRef.current) {
+        // Si ha terminado la duración, hacer fade-out
+        const fadeOutProps = { 
+          opacity: 0, 
+          y: 20, 
+          duration: 0.8,
+          ease: 'power2.in',
+          onComplete: () => {
+            setIsIntentionallyHidden(true);
+            setIsVisible(false);
+          }
+        };
+        gsap.to(promptRef.current, fadeOutProps);
       }
-    }, 2000); // Aumentado de 1000ms a 2000ms para mayor pausa antes de la siguiente frase
+    }, FIXED_DISPLAY_DURATION);
   };
 
   useEffect(() => {
@@ -113,7 +141,7 @@ const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstance
     // Si tenemos textos, mostrar el prompt (especialmente si no hay duración aún o es el primer texto)
     const shouldShow = hasText && !hasEnded && (textIndexChanged || isFirstText || (noDurationYet && textos.length > 0));
     
-    if (shouldShow) {
+    if (shouldShow && !isIntentionallyHidden) {
       lastShownTextIndexRef.current = currentTextIndex;
       setIsIntentionallyHidden(false);
       
@@ -123,13 +151,21 @@ const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstance
         setIsVisible(true);
         setIsTyping(true);
       }
-    } else if (hasEnded && isVisible && promptRef.current && !isTyping) {
-      const fadeOutProps = { opacity: 0, y: 20, duration: 0.4, ease: 'power2.in' };
+    } else if (hasEnded && isVisible && promptRef.current && !isTyping && !isIntentionallyHidden) {
+      // Solo hacer fade-out si no está intencionalmente oculto
+      const fadeOutProps = { 
+        opacity: 0, 
+        y: 20, 
+        duration: 0.8, // Aumentado para fade-out más lento
+        ease: 'power2.in',
+        onComplete: () => {
+          setIsVisible(false);
+          setIsIntentionallyHidden(true);
+        }
+      };
       gsap.to(promptRef.current, fadeOutProps);
-      setIsVisible(false);
-      setIsIntentionallyHidden(true);
     }
-  }, [currentTextIndex, textos.length, isVisible, currentTime, duration, isTyping, isPaused]);
+  }, [currentTextIndex, textos.length, isVisible, currentTime, duration, isTyping, isPaused, isIntentionallyHidden]);
 
   useEffect(() => {
     if (promptRef.current) {

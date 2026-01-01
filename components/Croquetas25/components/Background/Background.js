@@ -465,6 +465,60 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
     };
   }, [selectedTrack]);
 
+  // Limpiar squares fuera de pantalla periódicamente
+  useEffect(() => {
+    const cleanupInterval = setInterval(() => {
+      setSquares(prev => {
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+        // Margen adicional para considerar elementos que están saliendo
+        const margin = 200;
+        
+        const visibleSquares = prev.filter(square => {
+          const el = squareRefs.current[square.id];
+          if (!el) return false; // Si no hay elemento, eliminar del estado
+          
+          const rect = el.getBoundingClientRect();
+          // Verificar si el elemento está completamente fuera de la pantalla (con margen)
+          const isOutOfBounds = 
+            rect.right < -margin ||
+            rect.left > viewportWidth + margin ||
+            rect.bottom < -margin ||
+            rect.top > viewportHeight + margin;
+          
+          // También verificar si la opacidad es 0 (ya desapareció visualmente)
+          const computedStyle = window.getComputedStyle(el);
+          const opacity = parseFloat(computedStyle.opacity) || 0;
+          
+          if (isOutOfBounds || opacity <= 0.01) {
+            // Limpiar animación y referencias
+            if (animationTimelinesRef.current[square.id]) {
+              animationTimelinesRef.current[square.id].kill();
+              delete animationTimelinesRef.current[square.id];
+            }
+            
+            // Limpiar imagen
+            const img = el.querySelector(`.${MAINCLASS}__squareImage`);
+            if (img) {
+              img.src = '';
+              img.remove();
+            }
+            
+            delete squareRefs.current[square.id];
+            return false; // Eliminar del array
+          }
+          
+          return true; // Mantener en el array
+        });
+        
+        return visibleSquares;
+      });
+    }, 2000); // Verificar cada 2 segundos
+    
+    return () => clearInterval(cleanupInterval);
+  }, []);
+  
+  // Limitar número máximo de squares (fallback)
   useEffect(() => {
     const interval = setInterval(() => {
       setSquares(prev => {
