@@ -488,6 +488,7 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
     const targetImageState = imageStatesRef.current.get(targetImagePath);
     
     // Buscar la siguiente imagen lista en esta subcarpeta
+    // IMPORTANTE: Solo devolver imágenes con estado 'ready' (completamente cargadas)
     let attempts = 0;
     const startIndex = subfolderIndex;
     
@@ -497,8 +498,16 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
       const imagePath = typeof imageObj === 'object' ? (imageObj.path || imageObj) : imageObj;
       const imageState = imageStatesRef.current.get(imagePath);
       
-      // Solo usar imágenes que estén 'ready', no 'used' ni 'loading' ni 'pending'
-      if (imageState && imageState.state === 'ready') {
+      // Solo devolver imágenes que estén completamente cargadas (estado 'ready' y elemento img completo)
+      if (!imageState || imageState.state !== 'ready' || !imageState.imgElement || !imageState.imgElement.complete) {
+        // Saltar esta imagen y buscar la siguiente
+        subfolderIndex = (subfolderIndex + 1) % imageIndices.length;
+        attempts++;
+        continue;
+      }
+      
+      // Imagen completamente cargada y lista para usar
+      if (imageState && imageState.state === 'ready' && imageState.imgElement && imageState.imgElement.complete) {
         const imageSubfolder = imagesBySubfolderRef.current.get(imagePath);
         const previousSubfolder = lastSubfolderRef.current;
         

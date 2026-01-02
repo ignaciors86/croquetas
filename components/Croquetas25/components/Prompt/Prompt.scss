@@ -25,6 +25,8 @@
   -ms-user-select: none;
   padding: 2.5vh 3vw;
   min-height: 12vh;
+  transition: min-height 0.4s ease, height 0.4s ease;
+  overflow: hidden;
 
   &__kitt {
     position: relative;

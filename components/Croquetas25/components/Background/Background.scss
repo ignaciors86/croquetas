@@ -112,6 +112,12 @@
       @media (orientation: portrait) {
         // El scale se aplica en el transform inline junto con la rotación
       }
+      
+      @media (orientation: landscape) {
+        // En landscape, aumentar tamaño a 120% del viewport height
+        max-width: 120dvh;
+        max-height: 120dvh;
+      }
     }
   }
 }

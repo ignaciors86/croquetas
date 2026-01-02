@@ -21,16 +21,18 @@ const calculateReadingTime = (text) => {
 const calculateTypingTime = (text) => {
   if (!text || text.trim() === '') return 0;
   const chars = text.length;
-  const typingSpeed = 15; // caracteres por segundo (velocidad más lenta para evitar parpadeos)
+  const typingSpeed = 60; // caracteres por segundo (velocidad mucho más rápida)
   return chars / typingSpeed;
 };
 
 const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstanceRef: externalTypewriterRef, isPaused = false, analyser = null }) => {
   const promptRef = useRef(null);
+  const textContainerRef = useRef(null);
   const [currentTextIndex, setCurrentTextIndex] = useState(-1);
   const [isVisible, setIsVisible] = useState(false);
   const [displayText, setDisplayText] = useState('');
   const fadeAnimationRef = useRef(null);
+  const heightAnimationRef = useRef(null);
   
   // Filtrar textos vacíos
   const validTextos = useMemo(() => {
@@ -416,11 +418,38 @@ const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstance
     };
   }, [currentTextIndex, currentTime, textTimings]);
   
+  // Animar altura suavemente cuando cambia el texto
+  useEffect(() => {
+    if (!promptRef.current || !displayText) return;
+    
+    // Cancelar animación anterior si existe
+    if (heightAnimationRef.current) {
+      heightAnimationRef.current.kill();
+    }
+    
+    // Usar requestAnimationFrame para medir la altura después del render
+    requestAnimationFrame(() => {
+      if (promptRef.current) {
+        const currentHeight = promptRef.current.scrollHeight;
+        const minHeightVh = Math.max(12, (currentHeight / window.innerHeight) * 100);
+        
+        heightAnimationRef.current = gsap.to(promptRef.current, {
+          minHeight: `${minHeightVh}vh`,
+          duration: 0.4,
+          ease: 'power2.out'
+        });
+      }
+    });
+  }, [displayText]);
+  
   // Limpiar animaciones al desmontar
   useEffect(() => {
     return () => {
       if (fadeAnimationRef.current) {
         fadeAnimationRef.current.kill();
+      }
+      if (heightAnimationRef.current) {
+        heightAnimationRef.current.kill();
       }
     };
   }, []);

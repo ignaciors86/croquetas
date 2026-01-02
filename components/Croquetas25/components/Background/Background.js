@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState } from 'react';
 import gsap from 'gsap';
 import './Background.scss';
 import Diagonales from './components/Diagonales/Diagonales';
+import BorderSquaresCanvas from './components/BorderSquaresCanvas/BorderSquaresCanvas';
 import { useGallery } from '../Gallery/Gallery';
 
 const MAINCLASS = 'background';
@@ -12,6 +13,7 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
   const animationTimelinesRef = useRef({});
   const lastProgressRef = useRef(0);
   const colorIndexRef = useRef(0);
+  const recentImagePositionsRef = useRef([]); // Track de posiciones recientes para evitar solapamientos
   const { getNextImage, allImages, isLoading, preloadNextImages, isLastImageRef } = useGallery(selectedTrack, null, onAllComplete, currentAudioIndex);
   const MAX_SQUARES = 50;
   
@@ -95,17 +97,18 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
         const viewportHeight = window.innerHeight;
         
         // Calcular tamaño máximo de imagen según CSS
-        // Desktop: max-width y max-height = 100dvh (100% del viewport height)
+        // Desktop: max-width y max-height = 120dvh (120% del viewport height para landscape)
         // Portrait: max-width y max-height = 100dvh, pero con scale(0.5), así que tamaño efectivo = 50dvh
+        // Tamaño fijo independiente de la velocidad de la música
         let maxImageWidth, maxImageHeight;
         if (isPortrait) {
           // En portrait, el scale(0.5) hace que el tamaño efectivo sea la mitad
           maxImageWidth = viewportHeight * 0.5; // 50% del viewport height
           maxImageHeight = viewportHeight * 0.5;
         } else {
-          // En desktop, max-width y max-height = 100dvh
-          maxImageWidth = viewportHeight; // 100% del viewport height
-          maxImageHeight = viewportHeight;
+          // En desktop/landscape, usar 120% del viewport height (tamaño fijo)
+          maxImageWidth = viewportHeight * 1.2; // 120% del viewport height
+          maxImageHeight = viewportHeight * 1.2;
         }
         
         // Calcular márgenes necesarios para mantener imagen completa dentro de límites
@@ -114,10 +117,13 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
         const marginYPercent = (maxImageHeight / 2) / viewportHeight * 100;
         
         // Área válida considerando márgenes (para que la imagen completa quede dentro)
-        const minX = marginXPercent;
-        const maxX = 100 - marginXPercent;
-        const minY = marginYPercent;
-        const maxY = 100 - marginYPercent;
+        // Expandir significativamente hacia los lados y arriba para usar todo el espacio disponible
+        const sideExpansion = 8; // Expandir 8% más hacia cada lado
+        const topExpansion = 15; // Expandir 15% más hacia arriba
+        const minX = Math.max(0, marginXPercent - sideExpansion); // Más espacio a los lados
+        const maxX = Math.min(100, 100 - marginXPercent + sideExpansion); // Más espacio a los lados
+        const minY = Math.max(0, marginYPercent - topExpansion); // Mucho más espacio arriba
+        const maxY = Math.min(100, 100 - marginYPercent); // Mantener margen inferior
         
         // Zona a evitar (prompt) en coordenadas
         let avoidMinX, avoidMaxX, avoidMinY, avoidMaxY;
@@ -133,35 +139,137 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
           avoidMaxY = 100;
         }
         
+        // Limpiar posiciones antiguas (más de 2 segundos)
+        const now = Date.now();
+        recentImagePositionsRef.current = recentImagePositionsRef.current.filter(pos => now - pos.timestamp < 2000);
+        
         let x, y;
         let attempts = 0;
-        const maxAttempts = 50;
+        const maxAttempts = 100; // Aumentar intentos para mejor distribución
+        
+        // Distribución mejorada: usar toda la altura y ancho, especialmente arriba y los lados
+        // Dividir el área válida en zonas para mejor distribución
+        const availableHeight = avoidMinY - minY; // Altura disponible (sin prompt)
+        const topZone = availableHeight * 0.5; // 50% superior (más espacio arriba)
+        const midZone = availableHeight * 0.3; // 30% medio
+        const bottomZone = availableHeight * 0.2; // 20% inferior (cerca del prompt)
+        
+        // Dividir horizontalmente en zonas también - priorizar más los lados
+        const availableWidth = maxX - minX;
+        const leftZone = availableWidth * 0.35; // 35% izquierda (aumentado)
+        const centerZone = availableWidth * 0.3; // 30% centro (reducido)
+        const rightZone = availableWidth * 0.35; // 35% derecha (aumentado)
         
         do {
-          // Generar posición aleatoria dentro del área válida
-          if (isPortrait) {
-            // Portrait: rango limitado por márgenes
-            x = minX + Math.random() * (maxX - minX);
-            y = minY + Math.random() * (maxY - minY);
+          // Priorizar zonas superiores y laterales para usar todo el espacio
+          const zoneRandomY = Math.random();
+          const zoneRandomX = Math.random();
+          let targetY, targetX;
+          
+          // Distribución vertical: priorizar mucho más arriba
+          if (zoneRandomY < 0.7) {
+            // 70% de probabilidad: zona superior (aumentado de 60%)
+            targetY = minY + Math.random() * topZone;
+          } else if (zoneRandomY < 0.9) {
+            // 20% de probabilidad: zona media
+            targetY = minY + topZone + Math.random() * midZone;
           } else {
-            // Desktop: más cerca del centro, pero respetando márgenes
-            // Centro está en 50%, así que usamos un rango alrededor del centro
-            const centerRange = 20; // ±20% del centro
-            x = Math.max(minX, Math.min(maxX, 50 - centerRange + Math.random() * (centerRange * 2)));
-            y = minY + Math.random() * (maxY - minY);
+            // 10% de probabilidad: zona inferior (reducido de 15%)
+            targetY = minY + topZone + midZone + Math.random() * bottomZone;
           }
+          
+          // Distribución horizontal: priorizar mucho más los lados
+          if (zoneRandomX < 0.4) {
+            // 40% de probabilidad: zona izquierda (aumentado de 35%)
+            targetX = minX + Math.random() * leftZone;
+          } else if (zoneRandomX < 0.6) {
+            // 20% de probabilidad: zona centro (reducido de 30%)
+            targetX = minX + leftZone + Math.random() * centerZone;
+          } else {
+            // 40% de probabilidad: zona derecha (aumentado de 35%)
+            targetX = minX + leftZone + centerZone + Math.random() * rightZone;
+          }
+          
+          x = targetX;
+          y = targetY;
+          
+          // Asegurar que esté dentro de los límites válidos
+          x = Math.max(minX, Math.min(maxX, x));
+          y = Math.max(minY, Math.min(y, maxY));
           
           // Verificar que no esté en zona del prompt
           const inPromptZone = x >= avoidMinX && x <= avoidMaxX && y >= avoidMinY && y <= avoidMaxY;
           
+          // Verificar que no esté muy cerca de posiciones recientes
+          const minDistance = 8; // Mínimo 8% de distancia entre imágenes
+          const tooClose = recentImagePositionsRef.current.some(pos => {
+            const distance = Math.sqrt(Math.pow(x - pos.x, 2) + Math.pow(y - pos.y, 2));
+            return distance < minDistance;
+          });
+          
           // Verificar que esté dentro de límites válidos (con márgenes)
           const withinBounds = x >= minX && x <= maxX && y >= minY && y <= maxY;
           
-          if (!inPromptZone && withinBounds) {
+          if (!inPromptZone && withinBounds && !tooClose) {
+            // Guardar posición reciente
+            recentImagePositionsRef.current.push({
+              x,
+              y,
+              timestamp: now,
+              direction: -1 // Sin dirección específica (usamos distribución por zonas)
+            });
             break;
           }
           
           attempts++;
+          
+          // Si falla, intentar con distribución más amplia (priorizando arriba y los lados)
+          if (attempts > 50) {
+            // Usar distribución más amplia, priorizando arriba y los lados
+            const sideBias = Math.random();
+            const topBias = Math.random();
+            
+            if (isPortrait) {
+              // Portrait: distribución más amplia horizontalmente
+              x = minX + Math.random() * (maxX - minX);
+              // Priorizar arriba (80% de probabilidad)
+              y = topBias < 0.8 
+                ? minY + Math.random() * ((avoidMinY - minY) * 0.6) // 60% del área superior
+                : minY + ((avoidMinY - minY) * 0.6) + Math.random() * ((avoidMinY - minY) * 0.4);
+            } else {
+              // Desktop: distribución más amplia, priorizando lados y arriba
+              if (sideBias < 0.4) {
+                // 40% probabilidad: lado izquierdo
+                x = minX + Math.random() * ((maxX - minX) * 0.35);
+              } else if (sideBias > 0.6) {
+                // 40% probabilidad: lado derecho
+                x = minX + (maxX - minX) * 0.65 + Math.random() * ((maxX - minX) * 0.35);
+              } else {
+                // 20% probabilidad: centro (menos probable)
+                x = minX + (maxX - minX) * 0.3 + Math.random() * ((maxX - minX) * 0.4);
+              }
+              // Priorizar arriba (80% de probabilidad)
+              y = topBias < 0.8 
+                ? minY + Math.random() * ((avoidMinY - minY) * 0.6) // 60% del área superior
+                : minY + ((avoidMinY - minY) * 0.6) + Math.random() * ((avoidMinY - minY) * 0.4);
+            }
+            
+            const inPromptZoneRetry = x >= avoidMinX && x <= avoidMaxX && y >= avoidMinY && y <= avoidMaxY;
+            const tooCloseRetry = recentImagePositionsRef.current.some(pos => {
+              const distance = Math.sqrt(Math.pow(x - pos.x, 2) + Math.pow(y - pos.y, 2));
+              return distance < minDistance;
+            });
+            
+            if (!inPromptZoneRetry && !tooCloseRetry) {
+              recentImagePositionsRef.current.push({
+                x,
+                y,
+                timestamp: now,
+                direction: -1 // Sin dirección específica
+              });
+              break;
+            }
+          }
         } while (attempts < maxAttempts);
         
         // Si después de los intentos sigue en zona prohibida, usar posición alternativa segura
@@ -687,35 +795,52 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
         isInitialized={showOnlyDiagonales ? true : isInitialized}
         onVoiceCallbackRef={showOnlyDiagonales ? null : onVoiceCallbackRef}
       />
+      {/* Canvas único para cuadros con borde */}
+      {!showOnlyDiagonales && (
+        <BorderSquaresCanvas
+          squares={squares}
+          analyserRef={analyserRef}
+          dataArrayRef={dataArrayRef}
+          animationTimelinesRef={animationTimelinesRef}
+        />
+      )}
       {/* Blur overlay permanente sobre las diagonales - backdrop-filter difumina lo que está detrás */}
       <div className={`${MAINCLASS}__blurOverlay`} />
       {!showOnlyDiagonales && squares.map(square => {
         const isTarget = square.isTarget;
-        const style = {};
         
-        if (isTarget) {
-          // Cuadrados con imagen: usar gradiente
-          const color1 = square.gradient?.color1 || '#00ffff';
-          const color2 = square.gradient?.color2 || '#00ffff';
-          const angle = square.gradient?.angle || 45;
-          style['--square-color-1'] = color1;
-          style['--square-color-2'] = color2;
-          style['--square-gradient-angle'] = `${angle}deg`;
-        } else {
-          // Cuadrados sin imagen: usar color sólido inicial (se actualizará dinámicamente)
-          const borderColor = square.borderColor || square.data?.borderColor || '#00ffff';
-          style['--square-border-color'] = borderColor;
+        // Solo renderizar cuadrados con imagen (los de borde se renderizan en BorderSquaresCanvas)
+        if (!isTarget) {
+          // Crear un div invisible para que GSAP pueda animarlo y sincronizar con el canvas
+          return (
+            <div
+              key={square.id}
+              ref={el => squareRefs.current[square.id] = el}
+              className={`${MAINCLASS}__square`}
+              data-square-id={square.id}
+              style={{ visibility: 'hidden', pointerEvents: 'none' }}
+            />
+          );
         }
+        
+        // Cuadrados con imagen
+        const style = {};
+        const color1 = square.gradient?.color1 || '#00ffff';
+        const color2 = square.gradient?.color2 || '#00ffff';
+        const angle = square.gradient?.angle || 45;
+        style['--square-color-1'] = color1;
+        style['--square-color-2'] = color2;
+        style['--square-gradient-angle'] = `${angle}deg`;
         
         return (
           <div
             key={square.id}
             ref={el => squareRefs.current[square.id] = el}
-            className={`${MAINCLASS}__square ${isTarget ? `${MAINCLASS}__square--target` : ''}`}
+            className={`${MAINCLASS}__square ${MAINCLASS}__square--target`}
             data-square-id={square.id}
             style={style}
           >
-            {square.isTarget && square.imageUrl && (
+            {square.imageUrl && (
               <img 
                 src={square.imageUrl} 
                 alt="Gallery"
