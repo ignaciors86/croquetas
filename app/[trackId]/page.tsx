@@ -1,5 +1,5 @@
 import { Suspense } from 'react';
-import Croquetas from '@/components/Croquetas.jsx';
+import Croquetas25 from '@/components/Croquetas25/Croquetas25';
 
 export const dynamic = 'force-dynamic';
 
@@ -7,7 +7,7 @@ export default function TrackPage() {
   return (
     <main>
       <Suspense fallback={null}>
-        <Croquetas />
+        <Croquetas25 />
       </Suspense>
     </main>
   );

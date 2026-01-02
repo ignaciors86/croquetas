@@ -145,20 +145,14 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
   }, [preloadImage, BATCH_SIZE, BATCH_DELAY, MAX_CONCURRENT_LOADS]);
 
   useEffect(() => {
-    // Solo cargar imágenes cuando el audio haya empezado o cuando no hay audio (para tracks sin audio)
-    // Esto evita cargar recursos antes de que estén disponibles
+    // Cargar imágenes siempre que haya un track seleccionado
+    // Las imágenes se cargan en paralelo con el audio, no dependen de que el audio haya empezado
     if (!selectedTrack) {
       return;
     }
     
-    const hasAudio = selectedTrack?.srcs && selectedTrack.srcs.length > 0;
-    if (!audioStarted && hasAudio) {
-      // Si hay audio pero no ha empezado, no cargar imágenes todavía
-      setIsLoading(true);
-      setPreloadProgress(0);
-      setAllImages([]); // Limpiar imágenes para evitar intentos de carga
-      return;
-    }
+    // Ya no bloqueamos la carga de imágenes basándonos en audioStarted
+    // Las imágenes se cargan desde el principio para que estén listas cuando se necesiten
 
     const loadImages = async () => {
       try {

@@ -3,16 +3,18 @@
 import React, { useRef, useEffect, useState } from 'react';
 import './AudioAnalyzer.scss';
 
-const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef, currentAudioIndex = null, analyserRef: externalAnalyserRef, dataArrayRef: externalDataArrayRef, setIsInitialized: externalSetIsInitialized }) => {
+const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef, currentAudioIndex = null, analyserRef: externalAnalyserRef, dataArrayRef: externalDataArrayRef, timeDataArrayRef: externalTimeDataArrayRef, setIsInitialized: externalSetIsInitialized }) => {
   // Crear refs internos como fallback
   const internalAnalyserRef = useRef(null);
   const internalDataArrayRef = useRef(null);
+  const internalTimeDataArrayRef = useRef(null);
   const [internalIsInitialized, setInternalIsInitialized] = useState(false);
   const isInitializedRef = useRef(false);
   
   // Usar refs externos si están disponibles, sino usar internos
   const analyserRef = externalAnalyserRef || internalAnalyserRef;
   const dataArrayRef = externalDataArrayRef || internalDataArrayRef;
+  const timeDataArrayRef = externalTimeDataArrayRef || internalTimeDataArrayRef;
   
   // Función para actualizar el estado de inicialización (tanto interno como externo)
   const updateIsInitialized = (value) => {
@@ -28,7 +30,6 @@ const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef, currentAudioInd
   const isInitialized = externalSetIsInitialized ? isInitializedRef.current : internalIsInitialized;
   
   const audioContextRef = useRef(null);
-  const timeDataArrayRef = useRef(null);
   const sourceNodeRef = useRef(null);
   const lastAudioIndexRef = useRef(null);
   
@@ -37,6 +38,25 @@ const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef, currentAudioInd
     if (!audioRef?.current) return;
     
     const audio = audioRef.current;
+    
+    // Si ya tenemos refs externos del AudioContext, NO crear una nueva conexión
+    // El AudioContext ya ha conectado el elemento audio, solo necesitamos usar los refs
+    if (externalAnalyserRef && externalAnalyserRef.current && externalDataArrayRef && externalDataArrayRef.current) {
+      console.log('[AudioAnalyzer] Usando analyser y dataArray del AudioContext existente');
+      analyserRef.current = externalAnalyserRef.current;
+      dataArrayRef.current = externalDataArrayRef.current;
+      // Inicializar timeDataArrayRef si no está disponible
+      if (externalTimeDataArrayRef && externalTimeDataArrayRef.current) {
+        timeDataArrayRef.current = externalTimeDataArrayRef.current;
+      } else if (!timeDataArrayRef.current && analyserRef.current) {
+        // Crear timeDataArrayRef si no existe
+        const bufferLength = analyserRef.current.frequencyBinCount;
+        timeDataArrayRef.current = new Uint8Array(bufferLength);
+      }
+      updateIsInitialized(true);
+      lastAudioIndexRef.current = currentAudioIndex;
+      return;
+    }
     
     // Verificar si el audio ya está conectado a otro AudioContext
     // Reutilizar la conexión existente - el MediaElementSourceNode está conectado al elemento,
@@ -145,7 +165,7 @@ const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef, currentAudioInd
       // El MediaElementSourceNode está conectado al elemento, no al archivo específico
       // Solo limpiar si realmente estamos desmontando el componente
     };
-  }, [audioRef, currentAudioIndex]);
+  }, [audioRef, currentAudioIndex, externalAnalyserRef, externalDataArrayRef, externalTimeDataArrayRef]);
   const lastBeatTimeRef = useRef(0);
   const lastVoiceTimeRef = useRef(0);
   const energyHistoryRef = useRef([]);
@@ -318,22 +338,23 @@ const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef, currentAudioInd
         ? trebleHistoryRef.current.reduce((acc, val) => acc + Math.pow(val - averageTrebleEnergy, 2), 0) / trebleHistoryRef.current.length
         : 0;
 
-      // Detección de picos agudos para cuadros sólidos - MUY REDUCIDA SENSIBILIDAD
-      // Mucho menos sensible para que aparezcan muchos menos cuadros con imagen
-      const trebleSensitivity = 0.25 + (0.45 * (1 - normalizedVolume)); // Aumentado a 0.25-0.7
-      const trebleThreshold = averageTrebleEnergy + (Math.sqrt(trebleVariance) * trebleSensitivity * 0.8); // Aumentado multiplicador a 0.8
-      const trebleSpikeThreshold = 0.5 + (0.25 * (1 - normalizedVolume)); // Aumentado a 0.5-0.75
-      const trebleSpikeMultiplier = 1.0 + (0.2 * (1 - normalizedVolume)); // Aumentado a 1.0-1.2
+      // Detección de picos agudos para cuadros sólidos - SENSIBILIDAD REDUCIDA
+      // Sensibilidad reducida para que las imágenes aparezcan con menos frecuencia
+      const trebleSensitivity = 0.22 + (0.33 * (1 - normalizedVolume)); // 0.22-0.55 (menos sensible)
+      const trebleThreshold = averageTrebleEnergy + (Math.sqrt(trebleVariance) * trebleSensitivity * 0.75); // Multiplicador 0.75
+      const trebleSpikeThreshold = 0.45 + (0.2 * (1 - normalizedVolume)); // 0.45-0.65 (menos sensible)
+      const trebleSpikeMultiplier = 0.95 + (0.15 * (1 - normalizedVolume)); // 0.95-1.1 (menos sensible)
       const recentTreble = trebleHistoryRef.current.slice(-4);
       const maxRecentTreble = recentTreble.length > 0 ? Math.max(...recentTreble) : 0;
       const trebleSpike = sharpEnergy > maxRecentTreble * trebleSpikeThreshold && sharpEnergy > averageTrebleEnergy * trebleSpikeMultiplier;
       const solidSquareDetected = sharpEnergy > trebleThreshold || trebleSpike;
       
-      // Detección de ritmos para cuadros - SENSIBILIDAD MUY AUMENTADA
-      const rhythmSensitivity = 0.02 + (0.2 * (1 - normalizedVolume)); // Aún más sensible: 0.02-0.22
-      const rhythmThreshold = averageRhythmEnergy + (Math.sqrt(rhythmVariance) * rhythmSensitivity * 0.2); // Reducido multiplicador a 0.2
-      const rhythmSpikeThreshold = 0.1 + (0.08 * (1 - normalizedVolume)); // Más sensible: 0.1-0.18
-      const rhythmSpikeMultiplier = 0.5 + (0.12 * (1 - normalizedVolume)); // Más sensible: 0.5-0.62
+      // Detección de ritmos para cuadros - SENSIBILIDAD REDUCIDA
+      // Menos sensible para que no salgan tantos cuadros
+      const rhythmSensitivity = 0.05 + (0.25 * (1 - normalizedVolume)); // 0.05-0.3 (menos sensible)
+      const rhythmThreshold = averageRhythmEnergy + (Math.sqrt(rhythmVariance) * rhythmSensitivity * 0.4); // Multiplicador 0.4
+      const rhythmSpikeThreshold = 0.15 + (0.1 * (1 - normalizedVolume)); // 0.15-0.25 (menos sensible)
+      const rhythmSpikeMultiplier = 0.7 + (0.2 * (1 - normalizedVolume)); // 0.7-0.9 (menos sensible)
       const recentRhythm = energyHistoryRef.current.slice(-5);
       const maxRecentRhythm = Math.max(...recentRhythm);
       const rhythmSpike = rhythmEnergy > maxRecentRhythm * rhythmSpikeThreshold && rhythmEnergy > averageRhythmEnergy * rhythmSpikeMultiplier;
@@ -361,10 +382,10 @@ const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef, currentAudioInd
       const maxRecentVoice = Math.max(...recentVoice);
       const voiceSpike = voiceEnergy > maxRecentVoice * voiceSpikeThreshold && voiceEnergy > averageVoiceEnergy * voiceSpikeMultiplier;
 
-      // Detección de ritmos para cuadros - MUY FRECUENTE
+      // Detección de ritmos para cuadros - FRECUENCIA MODERADA
       const now = Date.now();
       const timeSinceLastBeat = now - lastBeatTimeRef.current;
-      const minTimeBetweenBeats = 15 + (35 * (1 - normalizedVolume)); // Muy reducido: 15-50ms para máxima frecuencia
+      const minTimeBetweenBeats = 100 + (200 * (1 - normalizedVolume)); // 100-300ms para frecuencia moderada
       const rhythmDetected = (rhythmEnergy > rhythmThreshold || rhythmSpike) && timeSinceLastBeat > minTimeBetweenBeats;
       
       if (rhythmDetected) {

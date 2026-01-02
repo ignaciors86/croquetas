@@ -99,7 +99,8 @@ const BorderSquaresCanvas = ({
           data.progress = progress;
           
           // Calcular scale y z desde el progreso (igual que GSAP)
-          const targetScale = 0.85;
+          // targetScale = 1.0 significa que cuando scale = 1.0, el cuadrado ocupa el 100% del viewport
+          const targetScale = 1.0;
           data.scale = targetScale * progress;
           data.z = -600 + (400 - (-600)) * progress;
           
@@ -231,11 +232,12 @@ const BorderSquaresCanvas = ({
     
     // Calcular tamaño base (igual que GSAP: desde 0 hasta targetScale * viewport)
     // Los cuadros deben ocupar toda la ventana cuando están a escala completa
-    const targetScale = 0.85;
+    // targetScale = 1.0 significa que cuando scale = 1.0, el cuadrado ocupa el 100% del viewport
+    const targetScale = 1.0;
     const scale = squareData.scale;
     
     // El tamaño base es el viewport completo
-    // Cuando scale = targetScale (0.85), debe ocupar el 100% del viewport
+    // Cuando scale = targetScale (1.0), debe ocupar el 100% del viewport
     // Por lo tanto: finalSize = viewportSize * (scale / targetScale)
     const finalWidth = (viewportWidth / targetScale) * scale;
     const finalHeight = (viewportHeight / targetScale) * scale;

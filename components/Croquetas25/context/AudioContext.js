@@ -27,12 +27,23 @@ if (typeof window !== 'undefined') {
   });
 }
 
-export const AudioProvider = ({ children, audioSrcs = [] }) => {
+export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
+  // Si se pasa track, extraer audioSrcs de él
+  const audioSrcsFromTrack = React.useMemo(() => {
+    if (track) {
+      return track.srcs || (track.src ? [track.src] : []);
+    }
+    return [];
+  }, [track]);
+
+  // Usar audioSrcs del track si está disponible, sino usar audioSrcs prop
+  const finalAudioSrcs = audioSrcsFromTrack.length > 0 ? audioSrcsFromTrack : audioSrcs;
+
   // Validar y normalizar audioSrcs al inicio
   const validAudioSrcs = React.useMemo(() => {
-    if (!audioSrcs || !Array.isArray(audioSrcs)) return [];
+    if (!finalAudioSrcs || !Array.isArray(finalAudioSrcs)) return [];
     
-    return audioSrcs
+    return finalAudioSrcs
       .map(src => {
         // Convertir a string si es necesario
         if (typeof src === 'string') return src;
@@ -50,7 +61,7 @@ export const AudioProvider = ({ children, audioSrcs = [] }) => {
                src.length > 0 && 
                (src.includes('.mp3') || src.includes('.wav') || src.includes('.ogg') || src.includes('/static/media/'));
       });
-  }, [audioSrcs]);
+  }, [finalAudioSrcs]);
   // Detectar si estamos en iOS/Android Safari (donde cambiar src causa problemas)
   const isIOS = typeof window !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
   const isAndroid = typeof window !== 'undefined' && /Android/.test(navigator.userAgent);
@@ -418,6 +429,14 @@ export const AudioProvider = ({ children, audioSrcs = [] }) => {
 
       setAudioDurations(durations);
       
+      // Si tenemos duraciones cargadas, considerar el audio como listo para reproducir
+      // (especialmente para un solo audio)
+      if (durations.length > 0 && durations[0] > 0) {
+        console.log('[AudioContext] Duración cargada, marcando audio como listo para reproducir');
+        setIsLoaded(true);
+        setLoadingProgress(100);
+      }
+      
       // Pre-cargar todos los audios cuando hay múltiples
       if (validAudioSrcs.length > 1) {
         console.log('[AudioContext] Múltiples audios detectados: iniciando pre-carga...');
@@ -432,7 +451,7 @@ export const AudioProvider = ({ children, audioSrcs = [] }) => {
     };
 
     loadDurations();
-  }, [audioSrcs]);
+  }, [validAudioSrcs]);
 
   // Sincronizar refs cuando cambian desde fuera (seekToAudio, etc.)
   useEffect(() => {
@@ -458,7 +477,7 @@ export const AudioProvider = ({ children, audioSrcs = [] }) => {
       nextAudioRef.current.src = nextSrc;
       nextAudioRef.current.load();
     }
-  }, [audioSrcs, currentIndex]);
+  }, [validAudioSrcs, currentIndex]);
 
   // Listener estable para el evento 'ended' - separado del useEffect principal
   useEffect(() => {
@@ -919,12 +938,19 @@ export const AudioProvider = ({ children, audioSrcs = [] }) => {
     // Handler adicional para loadedmetadata (importante para Safari/iOS)
     const handleLoadedMetadata = () => {
       updateProgress();
-      // En iOS/Safari, loadedmetadata es suficiente para considerar cargado
-      if ((isIOS || isSafari) && audio.readyState >= 1) {
+      // Si tenemos duración, considerar cargado (funciona en todos los navegadores)
+      if (audio.duration && isFinite(audio.duration) && audio.duration > 0) {
         if (!isLoaded) {
           setIsLoaded(true);
           setLoadingProgress(100);
-          console.log(`[AudioContext] Audio marcado como cargado en handleLoadedMetadata (iOS/Safari)`);
+          console.log(`[AudioContext] Audio marcado como cargado en handleLoadedMetadata (duración: ${audio.duration.toFixed(2)}s, readyState: ${audio.readyState})`);
+        }
+      } else if ((isIOS || isSafari) && audio.readyState >= 1) {
+        // En iOS/Safari, loadedmetadata es suficiente para considerar cargado incluso sin duración
+        if (!isLoaded) {
+          setIsLoaded(true);
+          setLoadingProgress(100);
+          console.log(`[AudioContext] Audio marcado como cargado en handleLoadedMetadata (iOS/Safari, readyState: ${audio.readyState})`);
         }
       }
     };
@@ -1055,7 +1081,7 @@ export const AudioProvider = ({ children, audioSrcs = [] }) => {
         clearTimeout(transitionTimeoutRef.current);
       }
     };
-  }, [audioSrcs, currentIndex]);
+  }, [validAudioSrcs, currentIndex]);
 
   // useEffect separado para configurar AudioContext cuando el audio simple esté listo
   useEffect(() => {
@@ -1816,7 +1842,7 @@ export const AudioProvider = ({ children, audioSrcs = [] }) => {
 
   // Controles de teclado para audio
   useEffect(() => {
-    if (!audioSrcs || audioSrcs.length === 0) return;
+    if (!validAudioSrcs || validAudioSrcs.length === 0) return;
 
     const handleKeyDown = (e) => {
       // Ignorar si el usuario está escribiendo en un input
@@ -1888,7 +1914,12 @@ export const AudioProvider = ({ children, audioSrcs = [] }) => {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [audioSrcs]);
+  }, [validAudioSrcs]);
+
+  // Extraer propiedades del track
+  const audios = validAudioSrcs;
+  const guiones = track?.guionesBySubfolder || {};
+  const guion = track?.guion || null;
 
   const value = {
     audioRef,
@@ -1904,7 +1935,10 @@ export const AudioProvider = ({ children, audioSrcs = [] }) => {
     pause,
     togglePlayPause,
     currentIndex,
-    audioSrcs,
+    audioSrcs: validAudioSrcs,
+    audios,
+    guiones,
+    guion,
     audioDurations,
     seekToAudio,
     getTotalDuration,
@@ -1918,7 +1952,7 @@ export const AudioProvider = ({ children, audioSrcs = [] }) => {
 
   // Determinar si debemos renderizar múltiples elementos audio
   // Chrome iOS también necesita múltiples elementos cuando hay múltiples audios
-  const shouldRenderMultipleAudios = (isSafariIOS && audioSrcs.length > 1) || (isChromeIOS && audioSrcs.length > 1);
+  const shouldRenderMultipleAudios = (isSafariIOS && validAudioSrcs.length > 1) || (isChromeIOS && validAudioSrcs.length > 1);
   
   return (
     <AudioContextReact.Provider value={value}>

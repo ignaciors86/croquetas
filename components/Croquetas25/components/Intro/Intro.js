@@ -48,25 +48,22 @@ const Intro = ({ tracks, onTrackSelect, onStartPlayback = null, selectedTrackId 
       return;
     }
     
-    if (isDirectUri && selectedTrackId && isMainCroqueta(track)) {
-      setCroquetasUnlocked(true);
-    }
-    
-    if (isDirectUri && !croquetasUnlocked && !isMainCroqueta(track)) return;
-    
-    // Cuando se hace clic en una croqueta normal, solo cambiar la activa sin animaciones
-    // NO hacer animaciones ni renderizado completo - solo actualizar la URL
+    // Simplificado: siempre permitir clics en croquetas normales
+    console.log('[Intro] handleTrackSelect llamando onTrackSelect con:', track.name);
     onTrackSelect?.(track);
-  }, [isAnimating, isDirectUri, selectedTrackId, croquetasUnlocked, isMainCroqueta, onTrackSelect]);
+  }, [isAnimating, isMainCroqueta, onTrackSelect]);
 
   const handleCroquetaClick = useCallback((track, index) => (e) => {
-    e.stopPropagation();
-    e.preventDefault();
+    e?.stopPropagation?.();
+    e?.preventDefault?.();
+    console.log('[Intro] handleCroquetaClick en:', track.name, 'isMain:', isMainCroqueta(track));
     // Si es la croqueta activa (main) y hay onStartPlayback, usar onStartPlayback para empezar
     if (onStartPlayback && isMainCroqueta(track)) {
+      console.log('[Intro] Llamando onStartPlayback');
       onStartPlayback(e);
     } else {
-      // Si es una croqueta normal, solo cambiar la activa sin animaciones
+      // Si es una croqueta normal, establecer selectedTrack
+      console.log('[Intro] Llamando handleTrackSelect');
       handleTrackSelect(track, index);
     }
   }, [handleTrackSelect, onStartPlayback, isMainCroqueta]);
@@ -324,7 +321,7 @@ const Intro = ({ tracks, onTrackSelect, onStartPlayback = null, selectedTrackId 
         
         <div className={`${MAINCLASS}__buttons`}>
           {memoizedTracks.map((track, index) => {
-            if (isMainCroqueta(track) || (isDirectUri && !croquetasUnlocked)) return null;
+            if (isMainCroqueta(track)) return null;
             
             return (
               <Croqueta

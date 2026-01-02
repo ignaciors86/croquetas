@@ -404,11 +404,11 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
             
             const zStart = -600;
             const zEnd = 400;
-            const zAtScale85 = 50;
-            const scaleAt85 = 0.85;
+            const zAtScale1 = 50;
+            const scaleAt1 = 1.0; // Cambiado de 0.85 a 1.0 para que ocupe toda la pantalla
             
             const zTotal = zEnd - zStart;
-            const zProgressToScale85 = (zAtScale85 - zStart) / zTotal;
+            const zProgressToScale1 = (zAtScale1 - zStart) / zTotal;
             
             if (isCroquetas25) {
               // Para Nachitos de Nochevieja: animación continua sin detención, directamente al fade out
@@ -421,7 +421,7 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
                   opacity: 1
                 },
                 {
-                  scale: scaleAt85,
+                  scale: scaleAt1,
                   z: zEnd,
                   opacity: 1,
                   duration: duration,
@@ -470,7 +470,7 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
               );
             } else {
               // Para otras colecciones: animación con dos fases (con detención)
-              const timeToScale85 = duration * 0.55; // Ajustado: un poco más lento que 0.5
+              const timeToScale1 = duration * 0.55; // Ajustado: un poco más lento que 0.5
               const fadeOutDuration = duration * 0.45; // Ajustado para balancear
               
               timeline.fromTo(el, 
@@ -480,10 +480,10 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
                   opacity: 1
                 },
                 {
-                  scale: scaleAt85,
-                  z: zAtScale85,
+                  scale: scaleAt1,
+                  z: zAtScale1,
                   opacity: 1,
-                  duration: timeToScale85,
+                  duration: timeToScale1,
                   ease: 'power1.out',
                   force3D: true
                 }
@@ -531,7 +531,8 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
             }
           } else {
             // Cuadrados sin imagen: animación con color que reacciona a la música
-            const targetScale = 0.85;
+            // targetScale = 1.0 significa que cuando scale = 1.0, el cuadrado ocupa el 100% del viewport
+            const targetScale = 1.0;
             const fadeStartProgress = 0.6;
             const fadeEndProgress = 1.0;
             
