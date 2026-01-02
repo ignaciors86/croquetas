@@ -262,7 +262,7 @@ const Diagonales = ({ squares, analyserRef, dataArrayRef, isInitialized, onVoice
       }
       
       if (!hasActiveAnimation && !rotationTimelinesRef.current[diag.id]) {
-        const baseDuration = 60;
+        const baseDuration = 120; // Aumentado de 60 a 120 para hacer las diagonales más lentas
         const speedMultiplier = diag.speed || 1;
         // Usar la intensidad al momento de creación para fijar la velocidad
         const creationIntensity = diag.creationIntensity !== undefined ? diag.creationIntensity : 0.5;
@@ -390,7 +390,7 @@ const Diagonales = ({ squares, analyserRef, dataArrayRef, isInitialized, onVoice
           // Las diagonales fijas no rotan
           const hasActiveAnimation = rotationTimelinesRef.current[diag.id] && rotationTimelinesRef.current[diag.id].isActive();
           if (!hasActiveAnimation && !rotationTimelinesRef.current[diag.id]) {
-            const baseDuration = 60;
+            const baseDuration = 120; // Aumentado de 60 a 120 para hacer las diagonales más lentas
             const speedMultiplier = diag.speed || 1;
             const creationIntensity = diag.creationIntensity !== undefined ? diag.creationIntensity : 0.5;
             // Multiplicador más agresivo para velocidades mayores
@@ -468,27 +468,35 @@ const Diagonales = ({ squares, analyserRef, dataArrayRef, isInitialized, onVoice
           : Math.floor((nonFixedIndex / Math.max(nonFixedDiagonals.length, 1)) * (dataArrayRef?.current?.length || 1024));
         const freqIntensity = dataArrayRef?.current ? Math.min(dataArrayRef.current[freqIndex] / 255, 1) : 0.5;
         
-        const centerStart = 30 - freqIntensity * 10;
-        const centerEnd = 70 + freqIntensity * 10;
-        
-        const gradient = `linear-gradient(
-          ${currentAngle}deg,
-          rgba(0, 0, 0, 0) 0%,
-          rgba(0, 0, 0, 0) ${centerStart}%,
-          ${currentColor} ${centerStart + 5}%,
-          ${currentColor2} ${centerEnd - 5}%,
-          rgba(0, 0, 0, 0) ${centerEnd}%,
-          rgba(0, 0, 0, 0) 100%
-        )`;
+        // Para diagonales fijas, usar color sólido simple sin gradiente para evitar duplicación
+        if (diag.isFixed) {
+          el.style.backgroundColor = currentColor;
+          el.style.background = 'none';
+          el.style.boxShadow = 'none';
+        } else {
+          // Para diagonales en movimiento, usar gradiente
+          const centerStart = 30 - freqIntensity * 10;
+          const centerEnd = 70 + freqIntensity * 10;
+          
+          const gradient = `linear-gradient(
+            ${currentAngle}deg,
+            rgba(0, 0, 0, 0) 0%,
+            rgba(0, 0, 0, 0) ${centerStart}%,
+            ${currentColor} ${centerStart + 5}%,
+            ${currentColor2} ${centerEnd - 5}%,
+            rgba(0, 0, 0, 0) ${centerEnd}%,
+            rgba(0, 0, 0, 0) 100%
+          )`;
 
-        el.style.background = gradient;
-        // Resplandor suave en las diagonales
-        el.style.boxShadow = `
-          0 0 1vw ${currentColor},
-          0 0 2vw ${currentColor},
-          0 0 3vw ${currentColor2},
-          inset 0 0 0.5vw ${currentColor}
-        `;
+          el.style.background = gradient;
+          // Resplandor suave en las diagonales
+          el.style.boxShadow = `
+            0 0 1vw ${currentColor},
+            0 0 2vw ${currentColor},
+            0 0 3vw ${currentColor2},
+            inset 0 0 0.5vw ${currentColor}
+          `;
+        }
       });
 
       loopRef.current = requestAnimationFrame(animate);

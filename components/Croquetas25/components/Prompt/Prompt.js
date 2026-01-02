@@ -6,8 +6,6 @@ import KITT from '../KITT/KITT';
 const MAINCLASS = 'prompt';
 
 // Calcular tiempo de lectura basado en longitud del texto
-// Velocidad de lectura promedio: 200-250 palabras por minuto
-// Asumimos ~5 caracteres por palabra en español
 const calculateReadingTime = (text) => {
   if (!text || text.trim() === '') return 0;
   const words = text.trim().split(/\s+/).length;
@@ -17,22 +15,17 @@ const calculateReadingTime = (text) => {
   return Math.max(2, Math.min(8, timeInSeconds));
 };
 
-// Calcular tiempo de escritura basado en longitud
-const calculateTypingTime = (text) => {
-  if (!text || text.trim() === '') return 0;
-  const chars = text.length;
-  const typingSpeed = 60; // caracteres por segundo (velocidad mucho más rápida)
-  return chars / typingSpeed;
-};
-
 const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstanceRef: externalTypewriterRef, isPaused = false, analyser = null }) => {
   const promptRef = useRef(null);
   const textContainerRef = useRef(null);
   const [currentTextIndex, setCurrentTextIndex] = useState(-1);
-  const [isVisible, setIsVisible] = useState(false);
   const [displayText, setDisplayText] = useState('');
-  const fadeAnimationRef = useRef(null);
-  const heightAnimationRef = useRef(null);
+  const timelineRef = useRef(null);
+  const lastTextIndexRef = useRef(-1);
+  const targetHeightRef = useRef(0);
+  const previousTextRef = useRef('');
+  const minHeightRef = useRef(0); // Altura mínima cuando hay una línea de texto
+  const kittRef = useRef(null);
   
   // Filtrar textos vacíos
   const validTextos = useMemo(() => {
@@ -45,7 +38,6 @@ const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstance
       return [];
     }
     
-    // Si no hay duración aún, retornar array vacío (se manejará en el efecto)
     if (!duration || duration === 0) {
       return [];
     }
@@ -53,21 +45,28 @@ const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstance
     // Calcular tiempo total necesario para todos los textos
     let totalTimeNeeded = 0;
     const timings = validTextos.map((text, index) => {
-      const typingTime = calculateTypingTime(text);
       const readingTime = calculateReadingTime(text);
-      const fadeTime = 0.5; // tiempo de fade out
-      const totalTime = typingTime + readingTime + fadeTime;
+      const fadeOutTime = 0.6; // tiempo de fade out del texto
+      const fadeInTime = 0.8; // tiempo de fade in del texto después de levantar el div
+      const heightAnimationTime = 0.5; // tiempo de animación de altura
+      const pauseBetweenTexts = 0.6; // pausa entre textos
+      const totalTime = heightAnimationTime + fadeInTime + readingTime + fadeOutTime + pauseBetweenTexts;
       totalTimeNeeded += totalTime;
       
       return {
         text,
         index,
-        typingTime,
         readingTime,
-        fadeTime,
+        fadeOutTime,
+        fadeInTime,
+        heightAnimationTime,
+        pauseBetweenTexts,
         totalTime,
-        startTime: 0, // se calculará después
-        endTime: 0 // se calculará después
+        startTime: 0,
+        heightEndTime: 0,
+        fadeInEndTime: 0,
+        readingEndTime: 0,
+        endTime: 0
       };
     });
     
@@ -76,47 +75,41 @@ const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstance
     
     // Calcular tiempos de inicio y fin para cada texto
     let accumulatedTime = 0;
-    return timings.map(timing => {
-      const scaledTypingTime = timing.typingTime * scaleFactor;
+    return timings.map((timing, index) => {
+      const scaledHeightTime = timing.heightAnimationTime * scaleFactor;
+      const scaledFadeInTime = timing.fadeInTime * scaleFactor;
       const scaledReadingTime = timing.readingTime * scaleFactor;
-      const scaledFadeTime = timing.fadeTime * scaleFactor;
-      const scaledTotalTime = scaledTypingTime + scaledReadingTime + scaledFadeTime;
+      const scaledFadeOutTime = timing.fadeOutTime * scaleFactor;
+      const scaledPauseTime = index < timings.length - 1 ? timing.pauseBetweenTexts * scaleFactor : 0;
       
       const startTime = accumulatedTime;
-      const typingEndTime = startTime + scaledTypingTime;
-      const readingStartTime = typingEndTime;
-      const readingEndTime = readingStartTime + scaledReadingTime;
-      const endTime = readingEndTime + scaledFadeTime;
+      const heightEndTime = startTime + scaledHeightTime;
+      const fadeInEndTime = heightEndTime + scaledFadeInTime;
+      const readingEndTime = fadeInEndTime + scaledReadingTime;
+      const endTime = readingEndTime + scaledFadeOutTime + scaledPauseTime;
       
       accumulatedTime = endTime;
       
       return {
         ...timing,
         startTime,
-        typingEndTime,
-        readingStartTime,
+        heightEndTime,
+        fadeInEndTime,
         readingEndTime,
         endTime,
-        scaledTypingTime,
+        scaledHeightTime,
+        scaledFadeInTime,
         scaledReadingTime,
-        scaledFadeTime
+        scaledFadeOutTime,
+        scaledPauseTime
       };
     });
   }, [validTextos, duration]);
   
   // Determinar qué texto mostrar según el tiempo actual
   useEffect(() => {
-    console.log('[Prompt] Determining text index:', { 
-      textTimingsLength: textTimings.length, 
-      currentTime, 
-      duration,
-      validTextosLength: validTextos.length 
-    });
-    
     if (textTimings.length === 0) {
-      // Si no hay timings calculados pero hay textos, mostrar el primero
       if (validTextos.length > 0) {
-        console.log('[Prompt] No timings but have texts, showing first');
         setCurrentTextIndex(0);
       } else {
         setCurrentTextIndex(-1);
@@ -124,9 +117,7 @@ const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstance
       return;
     }
     
-    // Si no hay duración aún, mostrar el primer texto
     if (!duration || duration === 0) {
-      console.log('[Prompt] No duration yet, showing first text');
       setCurrentTextIndex(0);
       return;
     }
@@ -137,7 +128,6 @@ const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstance
       const timing = textTimings[i];
       if (currentTime >= timing.startTime && currentTime < timing.endTime) {
         foundIndex = i;
-        console.log('[Prompt] Found text index:', i, 'for time:', currentTime);
         break;
       }
     }
@@ -147,45 +137,96 @@ const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstance
       const lastTiming = textTimings[textTimings.length - 1];
       if (currentTime >= lastTiming.endTime) {
         foundIndex = textTimings.length - 1;
-        console.log('[Prompt] After last text, showing last');
       } else if (currentTime < textTimings[0].startTime) {
-        // Si estamos antes del primer texto, mostrar el primero
         foundIndex = 0;
-        console.log('[Prompt] Before first text, showing first');
       }
     }
     
     setCurrentTextIndex(foundIndex);
   }, [currentTime, duration, textTimings, validTextos.length]);
   
-  // Actualizar texto mostrado y animaciones según el índice actual
+  // Función auxiliar para actualizar la posición del timeline usando useRef para evitar dependencias
+  const updateTimelinePositionRef = useRef((tl, relativeTime, timing, hadPreviousText) => {
+    if (!tl) return;
+    
+    if (relativeTime < 0) {
+      tl.pause(0);
+      return;
+    }
+    
+    // Calcular tiempos del timeline
+    const fadeOutDuration = timing.scaledFadeOutTime * 0.6;
+    const collapseDuration = timing.scaledFadeOutTime * 0.4;
+    const collapseStart = timing.scaledFadeOutTime * 0.2; // Solapado con fade out
+    
+    const fadeOutEnd = fadeOutDuration;
+    const collapseEnd = collapseStart + collapseDuration;
+    const pauseEnd = collapseEnd + timing.scaledPauseTime;
+    const expandEnd = pauseEnd + timing.scaledHeightTime;
+    const fadeInEnd = expandEnd + timing.scaledFadeInTime;
+    
+    // Mapear tiempo relativo a tiempo del timeline
+    let timelineTime = 0;
+    
+    if (relativeTime < timing.scaledHeightTime + timing.scaledFadeInTime) {
+      // Fase de entrada
+      const entryProgress = relativeTime / (timing.scaledHeightTime + timing.scaledFadeInTime);
+      if (hadPreviousText) {
+        timelineTime = pauseEnd + (expandEnd - pauseEnd) * entryProgress;
+        if (relativeTime > timing.scaledHeightTime) {
+          const fadeInProgress = (relativeTime - timing.scaledHeightTime) / timing.scaledFadeInTime;
+          timelineTime = expandEnd + (fadeInEnd - expandEnd) * fadeInProgress;
+        }
+      } else {
+        timelineTime = (expandEnd - pauseEnd) * entryProgress;
+        if (relativeTime > timing.scaledHeightTime) {
+          const fadeInProgress = (relativeTime - timing.scaledHeightTime) / timing.scaledFadeInTime;
+          timelineTime = expandEnd + (fadeInEnd - expandEnd) * fadeInProgress;
+        }
+      }
+    } else if (relativeTime < timing.readingEndTime) {
+      // Fase de lectura (mantener visible)
+      timelineTime = fadeInEnd;
+    } else {
+      // Fase de salida (fade out + colapso)
+      const exitProgress = (relativeTime - timing.readingEndTime) / (timing.scaledFadeOutTime + timing.scaledPauseTime);
+      if (exitProgress < 0.6) {
+        // Fade out del texto (60% del tiempo)
+        const textFadeProgress = exitProgress / 0.6;
+        timelineTime = fadeInEnd - (fadeInEnd - fadeOutEnd) * textFadeProgress;
+      } else {
+        // Colapsar el div (40% del tiempo) - pero solo hasta altura mínima
+        const collapseProgress = (exitProgress - 0.6) / 0.4;
+        timelineTime = collapseStart + (collapseEnd - collapseStart) * collapseProgress;
+        // Asegurar que la altura no baje de la mínima
+        if (promptRef.current && minHeightRef.current > 0) {
+          const currentHeight = promptRef.current.offsetHeight || promptRef.current.scrollHeight;
+          if (currentHeight < minHeightRef.current) {
+            gsap.set(promptRef.current, { height: minHeightRef.current });
+          }
+        }
+      }
+    }
+    
+    tl.seek(Math.max(0, Math.min(timelineTime, tl.duration())));
+    tl.play();
+  });
+  
+  // Crear timeline de GSAP cuando cambia el índice del texto
   useEffect(() => {
     if (currentTextIndex === -1) {
-      // Si no hay índice válido pero hay textos, mostrar el primero
-      if (validTextos.length > 0 && textTimings.length === 0) {
-        setDisplayText(validTextos[0]);
-        if (!isVisible && promptRef.current) {
-          setIsVisible(true);
-          if (fadeAnimationRef.current) {
-            fadeAnimationRef.current.kill();
-          }
-          gsap.set(promptRef.current, { opacity: 1, y: 0 });
-        }
-        return;
+      // Ocultar prompt si no hay texto
+      if (timelineRef.current) {
+        timelineRef.current.kill();
+        timelineRef.current = null;
       }
-      
-      if (isVisible && promptRef.current) {
-        // Fade out
-        if (fadeAnimationRef.current) {
-          fadeAnimationRef.current.kill();
-        }
-        fadeAnimationRef.current = gsap.to(promptRef.current, {
+      if (promptRef.current && textContainerRef.current) {
+        gsap.to([promptRef.current, textContainerRef.current], {
           opacity: 0,
-          y: 50,
-          duration: 0.5,
+          height: 0,
+          duration: 0.3,
           ease: 'power2.in',
           onComplete: () => {
-            setIsVisible(false);
             setDisplayText('');
           }
         });
@@ -193,20 +234,7 @@ const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstance
       return;
     }
     
-    if (!promptRef.current) {
-      return;
-    }
-    
-    // Si no hay timings calculados pero hay índice válido, mostrar el texto directamente
-    if (textTimings.length === 0 && currentTextIndex >= 0 && currentTextIndex < validTextos.length) {
-      setDisplayText(validTextos[currentTextIndex]);
-      if (!isVisible) {
-        setIsVisible(true);
-        if (fadeAnimationRef.current) {
-          fadeAnimationRef.current.kill();
-        }
-        gsap.set(promptRef.current, { opacity: 1, y: 0 });
-      }
+    if (!promptRef.current || !textContainerRef.current) {
       return;
     }
     
@@ -216,278 +244,172 @@ const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstance
     }
     
     const text = timing.text;
-    const relativeTime = currentTime - timing.startTime;
+    const isNewText = currentTextIndex !== lastTextIndexRef.current;
+    const wasVisible = lastTextIndexRef.current >= 0;
     
-    // Determinar qué parte del texto mostrar
-    if (relativeTime < 0) {
-      // Aún no ha empezado este texto, pero si es el primer texto, mostrarlo
-      if (currentTextIndex === 0) {
-        setDisplayText(text.substring(0, 1)); // Mostrar al menos un carácter
-        if (!isVisible && promptRef.current) {
-          setIsVisible(true);
-          gsap.set(promptRef.current, { opacity: 1, y: 0 });
-        }
-      } else {
-        setDisplayText('');
+    // Si es un texto nuevo, crear un nuevo timeline
+    if (isNewText) {
+      // Matar timeline anterior si existe
+      if (timelineRef.current) {
+        timelineRef.current.kill();
+        timelineRef.current = null;
       }
-      return;
-    } else if (relativeTime < timing.scaledTypingTime) {
-      // Estamos en la fase de escritura - usar requestAnimationFrame para animación suave letra por letra
-      const typingProgress = Math.max(0, Math.min(1, relativeTime / timing.scaledTypingTime));
-      const charsToShow = Math.floor(text.length * typingProgress);
-      setDisplayText(text.substring(0, charsToShow));
       
-      // Fade in si no está visible
-      if (!isVisible && promptRef.current) {
-        setIsVisible(true);
-        if (fadeAnimationRef.current) {
-          fadeAnimationRef.current.kill();
-        }
-        gsap.set(promptRef.current, { opacity: 0, y: 50 });
-        fadeAnimationRef.current = gsap.to(promptRef.current, {
-          opacity: 1,
-          y: 0,
-          duration: 0.5,
-          ease: 'power2.out'
+      // Si había un texto visible, ocultarlo completamente primero
+      if (wasVisible && previousTextRef.current && textContainerRef.current) {
+        // Ocultar texto anterior inmediatamente
+        gsap.to(textContainerRef.current, {
+          opacity: 0,
+          duration: 0.3,
+          ease: 'power2.in',
+          overwrite: true
         });
+        
+        // Colapsar a altura mínima
+        const collapseHeight = Math.max(minHeightRef.current || 0, 0);
+        gsap.to(promptRef.current, {
+          height: collapseHeight,
+          y: '100%',
+          duration: 0.3,
+          ease: 'power2.in',
+          overwrite: true,
+          onComplete: () => {
+            // Después de ocultar, crear el nuevo timeline
+            createNewTimeline();
+          }
+        });
+      } else {
+        // No había texto visible, crear timeline directamente
+        createNewTimeline();
       }
-    } else if (relativeTime < timing.readingEndTime) {
-      // Estamos en la fase de lectura (texto completo visible)
-      setDisplayText(text);
       
-      // Asegurar que está visible
-      if (!isVisible && promptRef.current) {
-        setIsVisible(true);
-        if (fadeAnimationRef.current) {
-          fadeAnimationRef.current.kill();
-        }
-        gsap.set(promptRef.current, { opacity: 1, y: 0 });
-      }
-    } else {
-      // Estamos en la fase de fade out
-      const fadeProgress = (relativeTime - timing.readingEndTime) / timing.scaledFadeTime;
-      if (fadeProgress < 1 && promptRef.current) {
+      function createNewTimeline() {
+        if (!promptRef.current || !textContainerRef.current) return;
+        
+        // Guardar el texto anterior
+        const previousText = previousTextRef.current;
+        
+        // Establecer el nuevo texto
         setDisplayText(text);
-        if (fadeAnimationRef.current) {
-          fadeAnimationRef.current.kill();
-        }
-        fadeAnimationRef.current = gsap.to(promptRef.current, {
-          opacity: 1 - fadeProgress,
-          y: 50 * fadeProgress,
-          duration: 0.1,
-          ease: 'power2.in'
-        });
-      } else if (fadeProgress >= 1) {
-        // Fade out completado
-        setIsVisible(false);
-        setDisplayText('');
-      }
-    }
-  }, [currentTextIndex, currentTime, textTimings, isVisible, validTextos]);
-  
-  // Animación suave de máquina de escribir usando requestAnimationFrame para actualización letra por letra
-  const typingAnimationRef = useRef(null);
-  const lastCharsShownRef = useRef(0);
-  const lastTextIndexRef = useRef(-1);
-  const startTimeRef = useRef(null);
-  const lastUpdateTimeRef = useRef(0);
-  
-  useEffect(() => {
-    // Limpiar animación si cambió el índice de texto
-    if (currentTextIndex !== lastTextIndexRef.current) {
-      if (typingAnimationRef.current) {
-        cancelAnimationFrame(typingAnimationRef.current);
-        typingAnimationRef.current = null;
-      }
-      lastCharsShownRef.current = 0;
-      lastTextIndexRef.current = currentTextIndex;
-      startTimeRef.current = null;
-      lastUpdateTimeRef.current = 0;
-    }
-    
-    if (currentTextIndex === -1 || textTimings.length === 0) {
-      if (typingAnimationRef.current) {
-        cancelAnimationFrame(typingAnimationRef.current);
-        typingAnimationRef.current = null;
-      }
-      return;
-    }
-    
-    const timing = textTimings[currentTextIndex];
-    if (!timing) return;
-    
-    const text = timing.text;
-    const relativeTime = currentTime - timing.startTime;
-    
-    // Solo animar durante la fase de escritura
-    if (relativeTime >= 0 && relativeTime < timing.scaledTypingTime) {
-      // Inicializar tiempo de inicio si es la primera vez
-      if (startTimeRef.current === null) {
-        startTimeRef.current = Date.now() - (relativeTime * 1000);
-        lastCharsShownRef.current = 0;
-      }
-      
-      // Calcular tiempo transcurrido desde el inicio de la escritura
-      const elapsed = (Date.now() - startTimeRef.current) / 1000;
-      const typingProgress = Math.max(0, Math.min(1, elapsed / timing.scaledTypingTime));
-      const targetChars = Math.floor(text.length * typingProgress);
-      
-      // Solo actualizar si el número de caracteres ha aumentado (nunca disminuir)
-      if (targetChars > lastCharsShownRef.current && targetChars <= text.length) {
-        lastCharsShownRef.current = targetChars;
-        setDisplayText(text.substring(0, targetChars));
-      }
-      
-      // Continuar animando con requestAnimationFrame para suavidad (60fps)
-      if (!typingAnimationRef.current) {
-        const animate = () => {
-          if (currentTextIndex === -1 || textTimings.length === 0 || currentTextIndex !== lastTextIndexRef.current) {
-            typingAnimationRef.current = null;
-            return;
-          }
-          
-          const currentTiming = textTimings[currentTextIndex];
-          if (!currentTiming) {
-            typingAnimationRef.current = null;
-            return;
-          }
-          
-          if (startTimeRef.current === null) {
-            typingAnimationRef.current = null;
-            return;
-          }
-          
-          const now = Date.now();
-          // Limitar actualizaciones a ~60fps (cada ~16ms)
-          if (now - lastUpdateTimeRef.current < 16) {
-            typingAnimationRef.current = requestAnimationFrame(animate);
-            return;
-          }
-          lastUpdateTimeRef.current = now;
-          
-          const currentElapsed = (now - startTimeRef.current) / 1000;
-          
-          if (currentElapsed >= 0 && currentElapsed < currentTiming.scaledTypingTime) {
-            const currentProgress = Math.max(0, Math.min(1, currentElapsed / currentTiming.scaledTypingTime));
-            const currentTargetChars = Math.floor(currentTiming.text.length * currentProgress);
-            
-            // Solo actualizar si el número de caracteres ha aumentado (nunca disminuir)
-            if (currentTargetChars > lastCharsShownRef.current && currentTargetChars <= currentTiming.text.length) {
-              lastCharsShownRef.current = currentTargetChars;
-              setDisplayText(currentTiming.text.substring(0, currentTargetChars));
-            }
-            
-            typingAnimationRef.current = requestAnimationFrame(animate);
-          } else {
-            // Fuera de la fase de escritura, mostrar texto completo solo si no está completo
-            if (lastCharsShownRef.current < currentTiming.text.length) {
-              setDisplayText(currentTiming.text);
-              lastCharsShownRef.current = currentTiming.text.length;
-            }
-            typingAnimationRef.current = null;
-          }
-        };
         
-        typingAnimationRef.current = requestAnimationFrame(animate);
+        // Esperar a que React renderice el nuevo texto
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            if (!promptRef.current || !textContainerRef.current) return;
+            
+            // Renderizar fuera de la vista para calcular altura real
+            gsap.set(promptRef.current, {
+              height: 'auto',
+              opacity: 1,
+              y: '100%',
+              visibility: 'visible'
+            });
+            gsap.set(textContainerRef.current, { opacity: 0 });
+            
+            // Forzar reflow para calcular altura real
+            const targetHeight = promptRef.current.offsetHeight || promptRef.current.scrollHeight;
+            targetHeightRef.current = targetHeight;
+            
+            // Calcular altura mínima si es la primera vez
+            if (minHeightRef.current === 0) {
+              const testText = text.split('\n')[0] || text;
+              const originalText = textContainerRef.current.textContent;
+              const originalDisplay = textContainerRef.current.style.display;
+              
+              textContainerRef.current.textContent = testText;
+              textContainerRef.current.style.display = 'block';
+              
+              const measureHeight = () => {
+                if (promptRef.current) {
+                  gsap.set(promptRef.current, { height: 'auto', visibility: 'visible' });
+                  const singleLineHeight = promptRef.current.offsetHeight || promptRef.current.scrollHeight;
+                  minHeightRef.current = singleLineHeight;
+                  
+                  textContainerRef.current.textContent = originalText;
+                  textContainerRef.current.style.display = originalDisplay;
+                }
+              };
+              
+              requestAnimationFrame(() => {
+                requestAnimationFrame(measureHeight);
+              });
+            }
+            
+            // Crear nuevo timeline
+            const tl = gsap.timeline({ paused: true });
+            
+            // Pausa entre textos (si había texto anterior)
+            if (wasVisible && previousText && timing.scaledPauseTime > 0) {
+              tl.to({}, { duration: timing.scaledPauseTime });
+            }
+            
+            // Expandir el div
+            const finalHeight = Math.max(targetHeightRef.current, minHeightRef.current || 0);
+            tl.set(promptRef.current, {
+              height: minHeightRef.current || 0,
+              y: '100%',
+              opacity: 1,
+              visibility: 'visible'
+            }, '>0');
+            
+            tl.to(promptRef.current, {
+              height: finalHeight,
+              y: 0,
+              duration: timing.scaledHeightTime,
+              ease: 'power2.out'
+            }, '>0');
+            
+            // Fade in del texto
+            tl.to(textContainerRef.current, {
+              opacity: 1,
+              duration: timing.scaledFadeInTime,
+              ease: 'power2.out'
+            }, '>0');
+            
+            // Guardar referencia al timeline
+            timelineRef.current = tl;
+            lastTextIndexRef.current = currentTextIndex;
+            previousTextRef.current = text;
+            
+            // Actualizar progreso según el tiempo actual
+            const relativeTime = currentTime - timing.startTime;
+            updateTimelinePositionRef.current(tl, relativeTime, timing, wasVisible);
+          });
+        });
       }
     } else {
-      // Fuera de la fase de escritura, limpiar animación
-      if (typingAnimationRef.current) {
-        cancelAnimationFrame(typingAnimationRef.current);
-        typingAnimationRef.current = null;
-      }
-      // Solo resetear si realmente cambió de texto
-      if (relativeTime >= timing.scaledTypingTime) {
-        // Asegurar que el texto completo esté mostrado
-        if (lastCharsShownRef.current < text.length) {
-          setDisplayText(text);
-          lastCharsShownRef.current = text.length;
-        }
-      } else {
-        lastCharsShownRef.current = 0;
-        startTimeRef.current = null;
-        lastUpdateTimeRef.current = 0;
+      // Mismo texto, solo actualizar posición del timeline
+      if (timelineRef.current) {
+        const relativeTime = currentTime - timing.startTime;
+        const wasVisible = lastTextIndexRef.current >= 0;
+        updateTimelinePositionRef.current(timelineRef.current, relativeTime, timing, wasVisible);
       }
     }
-    
-    return () => {
-      if (typingAnimationRef.current) {
-        cancelAnimationFrame(typingAnimationRef.current);
-        typingAnimationRef.current = null;
-      }
-    };
-  }, [currentTextIndex, currentTime, textTimings]);
+  }, [currentTextIndex, currentTime, textTimings, validTextos]);
   
-  // Animar altura suavemente cuando cambia el texto
-  useEffect(() => {
-    if (!promptRef.current || !displayText) return;
-    
-    // Cancelar animación anterior si existe
-    if (heightAnimationRef.current) {
-      heightAnimationRef.current.kill();
-    }
-    
-    // Usar requestAnimationFrame para medir la altura después del render
-    requestAnimationFrame(() => {
-      if (promptRef.current) {
-        const currentHeight = promptRef.current.scrollHeight;
-        const minHeightVh = Math.max(12, (currentHeight / window.innerHeight) * 100);
-        
-        heightAnimationRef.current = gsap.to(promptRef.current, {
-          minHeight: `${minHeightVh}vh`,
-          duration: 0.4,
-          ease: 'power2.out'
-        });
-      }
-    });
-  }, [displayText]);
-  
-  // Limpiar animaciones al desmontar
+  // Cleanup al desmontar
   useEffect(() => {
     return () => {
-      if (fadeAnimationRef.current) {
-        fadeAnimationRef.current.kill();
-      }
-      if (heightAnimationRef.current) {
-        heightAnimationRef.current.kill();
+      if (timelineRef.current) {
+        timelineRef.current.kill();
+        timelineRef.current = null;
       }
     };
   }, []);
   
-  if (!validTextos || validTextos.length === 0) {
-    console.log('[Prompt] No valid texts');
+  if (currentTextIndex === -1 && !displayText) {
     return null;
   }
-  
-  // Si no hay displayText pero hay textos válidos y no hay timings, asegurar que se muestre
-  const shouldShow = displayText || (validTextos.length > 0 && textTimings.length === 0);
-  
-  if (!shouldShow && !isVisible) {
-    return null;
-  }
-  
-  // Asegurar que el prompt esté visible si hay texto para mostrar
-  if (shouldShow && !isVisible && promptRef.current) {
-    setIsVisible(true);
-    gsap.set(promptRef.current, { opacity: 1, y: 0 });
-  }
-  
+
   return (
-    <div className={MAINCLASS} ref={promptRef}>
+    <div ref={promptRef} className={MAINCLASS} style={{ minHeight: minHeightRef.current > 0 ? `${minHeightRef.current}px` : 'auto' }}>
       {analyser && (
-        <div className={`${MAINCLASS}__kitt`}>
+        <div ref={kittRef} className={`${MAINCLASS}__kitt`}>
           <KITT analyser={analyser} />
         </div>
       )}
-      <div className={`${MAINCLASS}__text`}>
-        {displayText || (validTextos.length > 0 && textTimings.length === 0 ? validTextos[0] : '')}
-        {currentTextIndex >= 0 && 
-         textTimings.length > 0 &&
-         textTimings[currentTextIndex] && 
-         currentTime >= textTimings[currentTextIndex].startTime && 
-         currentTime < textTimings[currentTextIndex].typingEndTime && (
-          <span className={`${MAINCLASS}__cursor`}>|</span>
-        )}
+      <div ref={textContainerRef} className={`${MAINCLASS}__text`}>
+        {displayText}
       </div>
     </div>
   );

@@ -112,7 +112,7 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  z-index: 1500;
+  z-index: 5000; // Por encima del loader (4000) - mismo nivel que tracks loading para estar siempre visible
   cursor: pointer;
   pointer-events: auto;
   will-change: opacity, transform;

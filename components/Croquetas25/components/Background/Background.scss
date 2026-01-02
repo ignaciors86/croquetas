@@ -108,6 +108,8 @@
       position: absolute;
       box-sizing: border-box;
       transform-origin: center center;
+      filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.6)) drop-shadow(0 2px 6px rgba(0, 0, 0, 0.4));
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
       
       @media (orientation: portrait) {
         // El scale se aplica en el transform inline junto con la rotación

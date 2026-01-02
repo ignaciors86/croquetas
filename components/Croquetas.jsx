@@ -193,7 +193,7 @@ const Croquetas = () => {
       };
   }, []);
   
-  const { isLoading: imagesLoading, preloadProgress: imagesProgress, seekToImagePosition } = useGallery(selectedTrack, handleSubfolderComplete, handleAllComplete);
+  const { isLoading: imagesLoading, preloadProgress: imagesProgress, seekToImagePosition } = useGallery(selectedTrack, handleSubfolderComplete, handleAllComplete, null, audioStarted);
   const audioSrcs = selectedTrack?.srcs || (selectedTrack?.src ? [selectedTrack.src] : []);
   const isDirectUri = !!trackId;
   const currentAudioSrc = audioSrcs[currentAudioIndex] || audioSrcs[0];
@@ -803,10 +803,10 @@ const Croquetas = () => {
             setIsPlaying={setIsPlaying}
           />
           <LoadingProgressHandler onTriggerCallbackRef={triggerCallbackRef} audioStarted={audioStarted} audioRef={audioRef} />
-          {selectedTrack && audioSrcs.length > 0 && audioRef?.current && (
+          {audioStarted && selectedTrack && audioSrcs.length > 0 && audioRef?.current && (
             <AudioAnalyzer 
-              onBeat={audioStarted ? handleBeat : null} 
-              onVoice={audioStarted ? handleVoice : null} 
+              onBeat={handleBeat} 
+              onVoice={handleVoice} 
               audioRef={audioRef} 
               currentAudioIndex={currentAudioIndex}
               analyserRef={analyserRef}
@@ -814,7 +814,7 @@ const Croquetas = () => {
               setIsInitialized={setIsAudioAnalyzerInitialized}
             />
           )}
-          <SeekWrapper selectedTrack={selectedTrack} audioRef={audioRef} currentAudioIndex={currentAudioIndex} audioSrcs={audioSrcs} setCurrentAudioIndex={setCurrentAudioIndex} />
+          <SeekWrapper selectedTrack={selectedTrack} audioRef={audioRef} currentAudioIndex={currentAudioIndex} audioSrcs={audioSrcs} setCurrentAudioIndex={setCurrentAudioIndex} audioStarted={audioStarted} />
           {audioStarted && selectedTrack && (
             <SubfolderAudioController selectedTrack={selectedTrack} audioRef={audioRef} currentAudioIndex={currentAudioIndex} setCurrentAudioIndex={setCurrentAudioIndex} audioSrcs={audioSrcs} />
           )}
@@ -1189,9 +1189,10 @@ const DiagonalesOnly = () => {
   );
 };
 
-const SeekWrapper = ({ selectedTrack, audioRef, currentAudioIndex, audioSrcs, setCurrentAudioIndex }) => {
+const SeekWrapper = ({ selectedTrack, audioRef, currentAudioIndex, audioSrcs, setCurrentAudioIndex, audioStarted }) => {
   const [squares, setSquares] = useState([]);
-  const { seekToImagePosition } = useGallery(selectedTrack, null, null, null);
+  // SeekWrapper solo necesita seekToImagePosition, no carga imágenes, así que puede usar audioStarted o true
+  const { seekToImagePosition } = useGallery(selectedTrack, null, null, null, audioStarted !== undefined ? audioStarted : true);
   
   useEffect(() => {
     const updateSquares = () => {

@@ -9,6 +9,60 @@
     url('/fonts/VCR/VCR_OSD_MONO-ID47EYT3.ttf') format('truetype');
 }
 
+/* Fuente para textos de las croquetas */
+@font-face {
+  font-family: 'CroquetaFont';
+  font-style: normal;
+  font-weight: normal;
+  font-display: swap;
+  src: 
+    url('/fonts/VCR/VCR_OSD_MONO-BACJ7AJA.woff2') format('woff2'),
+    url('/fonts/VCR/VCR_OSD_MONO-QFKAOLIE.woff') format('woff'),
+    url('/fonts/VCR/VCR_OSD_MONO-ID47EYT3.ttf') format('truetype');
+}
+
+/* Dancing Script - Fuente para el prompt */
+@font-face {
+  font-family: 'Dancing Script';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/DancingScript/DancingScript-Regular.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Dancing Script';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/DancingScript/DancingScript-Medium.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Dancing Script';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/DancingScript/DancingScript-SemiBold.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Dancing Script';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/DancingScript/DancingScript-Bold.ttf') format('truetype');
+}
+
+/* Fuente para el prompt */
+@font-face {
+  font-family: 'PromptFont';
+  font-style: normal;
+  font-weight: normal;
+  font-display: swap;
+  src: url('/fonts/DancingScript/DancingScript-Regular.ttf') format('truetype');
+}
+
 /* Asegurar que la fuente VCR se aplique globalmente donde se especifique */
 * {
   font-family: inherit;

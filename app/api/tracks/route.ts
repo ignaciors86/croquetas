@@ -100,7 +100,9 @@ export async function GET() {
 
         filesToProcess.forEach(file => {
           const relativePath = file.path;
-          const url = `/tracks/${relativePath}`;
+          // Codificar cada segmento de la ruta para URLs (espacios, paréntesis, etc.)
+          const urlSegments = relativePath.split('/').map(segment => encodeURIComponent(segment));
+          const url = `/tracks/${urlSegments.join('/')}`;
 
           const fileEntry = {
             path: relativePath,

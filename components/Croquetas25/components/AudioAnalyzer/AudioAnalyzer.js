@@ -56,11 +56,11 @@ const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef, currentAudioInd
         updateIsInitialized(true);
         lastAudioIndexRef.current = currentAudioIndex;
         
-        // Si el AudioContext está suspendido, resumirlo
+        // Si el AudioContext está suspendido, resumirlo silenciosamente
         if (audioContextRef.current.state === 'suspended') {
           audioContextRef.current.resume().then(() => {
-          }).catch(err => {
-            console.warn('[AudioAnalyzer] Error resumiendo AudioContext:', err);
+          }).catch(() => {
+            // Error esperado si no hay interacción del usuario - no mostrar warning
           });
         }
         
@@ -108,9 +108,11 @@ const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef, currentAudioInd
       lastAudioIndexRef.current = currentAudioIndex;
       
       if (audioContext.state === 'suspended') {
+        // Intentar resumir silenciosamente - los warnings del navegador son normales en desarrollo
         audioContext.resume().then(() => {
           updateIsInitialized(true);
         }).catch(() => {
+          // Error esperado si no hay interacción del usuario - no mostrar warning
           updateIsInitialized(false);
         });
       } else {
@@ -198,10 +200,10 @@ const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef, currentAudioInd
     const audio = audioRef?.current;
     
     if (audioContext && audioContext.state !== 'running') {
-      // Intentar resumir el AudioContext
+      // Intentar resumir el AudioContext silenciosamente
       audioContext.resume().then(() => {
-      }).catch(err => {
-        console.error(`[AudioAnalyzer] Error resuming AudioContext:`, err);
+      }).catch(() => {
+        // Error esperado si no hay interacción del usuario - no mostrar error
       });
       return;
     }

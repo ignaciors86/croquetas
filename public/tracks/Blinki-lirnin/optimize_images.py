@@ -14,13 +14,13 @@ import shutil
 from pathlib import Path
 
 # Configuración
-MAX_SIZE = 1920  # Tamaño máximo en píxeles (ancho o alto)
+MAX_HEIGHT = 600  # Altura máxima en píxeles (solo para imágenes que midan más)
 QUALITY = 92  # Calidad JPEG (85-95 es un buen rango, 92 es alta calidad)
 BACKUP_DIR = "_backup_original"
 MAX_GIF_SIZE_KB = 300  # Tamaño máximo para GIFs en KB
 GIF_DURATION = 2  # Duración del GIF en segundos (tomado de la parte central del video)
 
-def optimize_image(input_path, output_path, max_size=MAX_SIZE, quality=QUALITY):
+def optimize_image(input_path, output_path, max_height=MAX_HEIGHT, quality=QUALITY):
     """Optimiza una imagen reduciendo su tamaño manteniendo alta calidad"""
     try:
         with Image.open(input_path) as img:
@@ -28,13 +28,11 @@ def optimize_image(input_path, output_path, max_size=MAX_SIZE, quality=QUALITY):
             original_width, original_height = img.size
             
             # Calcular nuevas dimensiones manteniendo proporción
-            if original_width > max_size or original_height > max_size:
-                if original_width > original_height:
-                    new_width = max_size
-                    new_height = int((original_height / original_width) * max_size)
-                else:
-                    new_height = max_size
-                    new_width = int((original_width / original_height) * max_size)
+            # Solo redimensionar si la altura es mayor que max_height
+            if original_height > max_height:
+                # Calcular ancho proporcional basado en la altura máxima
+                new_height = max_height
+                new_width = int((original_width / original_height) * max_height)
                 
                 # Redimensionar con alta calidad (LANCZOS es el mejor algoritmo)
                 img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
@@ -298,7 +296,7 @@ def main():
     print(f"  - {len(images)} imágenes")
     print(f"  - {len(videos)} videos")
     print(f"  - {len(gifs)} GIFs")
-    print(f"Tamaño máximo imágenes: {MAX_SIZE}px, Calidad JPEG: {QUALITY}")
+    print(f"Altura máxima imágenes: {MAX_HEIGHT}px (ancho proporcional), Calidad JPEG: {QUALITY}")
     print(f"GIFs: máximo {MAX_GIF_SIZE_KB}KB, duración: {GIF_DURATION}s (parte central)")
     print("-" * 60)
     
@@ -323,7 +321,7 @@ def main():
             shutil.copy2(img_path, backup_file)
         
         # Optimizar
-        result = optimize_image(img_path, img_path, MAX_SIZE, QUALITY)
+        result = optimize_image(img_path, img_path, MAX_HEIGHT, QUALITY)
         
         if result['success']:
             successful += 1

@@ -42,11 +42,12 @@ const Croquetas25 = () => {
   
   const { tracks, isLoading: tracksLoading } = useTracks();
   
-  // Detectar trackId desde la URL inicial (sin navegación real)
+  // LÓGICA SIMPLIFICADA: trackIdFromUrl solo determina qué croqueta mostrar como activa
+  // selectedTrack solo se establece cuando el usuario hace clic en la croqueta activa para empezar
+  
   const getTrackIdFromUrl = useCallback(() => {
     if (typeof window === 'undefined') return null;
     const pathname = window.location.pathname;
-    // Buscar patrón /nachitos-de-nochevieja/[trackId] o /[trackId]
     const match = pathname.match(/\/(?:nachitos-de-nochevieja\/)?([^\/]+)$/);
     if (match && match[1] && match[1] !== 'nachitos-de-nochevieja') {
       return match[1];
@@ -54,170 +55,39 @@ const Croquetas25 = () => {
     return null;
   }, []);
   
-  const [trackIdFromUrl, setTrackIdFromUrl] = useState(() => getTrackIdFromUrl());
-  const [isSelectingTrack, setIsSelectingTrack] = useState(false); // Estado para evitar selecciones múltiples
-  const lastSelectedTrackIdRef = useRef(null); // Ref para rastrear el último track seleccionado
+  const [activeTrackId, setActiveTrackId] = useState(() => {
+    const fromUrl = getTrackIdFromUrl();
+    return fromUrl || 'nachitos-de-nochevieja'; // Por defecto nachitos-de-nochevieja
+  });
   
-  // Detectar cambios en la URL (para cuando el usuario navega manualmente o usa botón atrás)
+  // La URI es solo un parámetro amigable - NO cambiar location, solo leer
+  // Inicializar activeTrackId desde la URL o usar por defecto - SOLO UNA VEZ al montar
+  const initializedRef = useRef(false);
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (tracksLoading || tracks.length === 0 || initializedRef.current) return;
     
-    const handlePopState = () => {
-      const newTrackId = getTrackIdFromUrl();
-      setTrackIdFromUrl(newTrackId);
-    };
-    
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, [getTrackIdFromUrl]);
-  
-  // Seleccionar track automáticamente si hay trackId en la URL
-  // Usar useRef para rastrear si ya se procesó este trackId (para evitar dobles ejecuciones por StrictMode)
-  const processedTrackIdRef = useRef(null);
-  const effectRunCountRef = useRef(0);
-  const lastTrackIdFromUrlRef = useRef(null); // Ref para rastrear el último trackIdFromUrl procesado
-  
-  useEffect(() => {
-    // Solo ejecutar si trackIdFromUrl realmente cambió (no cuando selectedTrack cambia)
-    if (trackIdFromUrl === lastTrackIdFromUrlRef.current) {
-      return; // No ha cambiado, no hacer nada
-    }
-    
-    effectRunCountRef.current += 1;
-    const runId = effectRunCountRef.current;
-    
-    // Evitar ejecuciones múltiples - verificar ANTES de cualquier otra cosa
-    if (isSelectingTrack) {
-      console.log(`[Croquetas25] useEffect auto-select [${runId}]: Ya hay una selección en curso, ignorando`);
-      // Sincronizar el ref para evitar que se ejecute de nuevo
-      lastTrackIdFromUrlRef.current = trackIdFromUrl;
-      return;
-    }
-    
-    // Si este trackId ya fue procesado por handleTrackSelect, no hacer nada
-    if (processedTrackIdRef.current === trackIdFromUrl && processedTrackIdRef.current !== null) {
-      console.log(`[Croquetas25] useEffect auto-select [${runId}]: TrackId ya procesado por handleTrackSelect, ignorando`);
-      lastTrackIdFromUrlRef.current = trackIdFromUrl; // Sincronizar
-      return;
-    }
-    
-    if (!trackIdFromUrl || tracksLoading || tracks.length === 0) {
-      // Si no hay trackId, limpiar selección solo si hay un track seleccionado
-      if (!trackIdFromUrl && lastTrackIdFromUrlRef.current !== null) {
-        lastTrackIdFromUrlRef.current = null;
-        processedTrackIdRef.current = null;
-        // No limpiar selectedTrack aquí, solo cuando realmente no hay trackId y viene de popstate
-      }
-      return;
-    }
-    
-    // IMPORTANTE: Verificar también si el selectedTrack actual ya es el mismo track
-    const normalizedTrackId = trackIdFromUrl.toLowerCase().replace(/\s+/g, '-');
-    const currentTrackId = selectedTrack?.id?.toLowerCase().replace(/\s+/g, '-') || 
-                           selectedTrack?.name?.toLowerCase().replace(/\s+/g, '-');
-    
-    // Si el track actual ya es el mismo que el que queremos seleccionar, no hacer nada
-    if (currentTrackId === normalizedTrackId && selectedTrack) {
-      console.log(`[Croquetas25] useEffect auto-select [${runId}]: Track actual ya es el mismo, ignorando`);
-      lastTrackIdFromUrlRef.current = trackIdFromUrl; // Sincronizar
-      processedTrackIdRef.current = trackIdFromUrl; // Marcar como procesado
-      return;
-    }
-    const foundTrack = tracks.find(track => {
-      const normalizedId = (track.id || track.name.toLowerCase().replace(/\s+/g, '-'));
-      return normalizedId === normalizedTrackId;
-    });
-    
-    // Solo seleccionar si es diferente al último track seleccionado
-    const foundTrackId = foundTrack?.id || foundTrack?.name?.toLowerCase().replace(/\s+/g, '-');
-    if (foundTrackId === lastSelectedTrackIdRef.current) {
-      console.log(`[Croquetas25] useEffect auto-select [${runId}]: Track ya seleccionado, ignorando`);
-      processedTrackIdRef.current = trackIdFromUrl; // Marcar como procesado
-      lastTrackIdFromUrlRef.current = trackIdFromUrl; // Sincronizar
-      return; // Ya está seleccionado este track, no hacer nada
-    }
-    
-    if (foundTrack) {
-      console.log(`[Croquetas25] useEffect auto-select [${runId}]: Seleccionando track`, foundTrack.name);
+    const currentTrackId = getTrackIdFromUrl();
+    if (!currentTrackId) {
+      // Buscar el track de Nachitos de Nochevieja como por defecto
+      const nachitosTrack = tracks.find(track => {
+        const normalizedName = track.name?.toLowerCase().replace(/\s+/g, '-') || '';
+        const normalizedId = (track.id || '').toLowerCase().replace(/\s+/g, '-');
+        return normalizedName.includes('nachitos-de-nochevieja') || 
+               normalizedName.includes('nachitos de nochevieja') ||
+               normalizedId === 'nachitos-de-nochevieja';
+      });
+      const defaultId = nachitosTrack 
+        ? (nachitosTrack.id || nachitosTrack.name).toLowerCase().replace(/\s+/g, '-')
+        : 'nachitos-de-nochevieja';
       
-      // Marcar como procesado ANTES de hacer cambios
-      processedTrackIdRef.current = trackIdFromUrl;
-      lastTrackIdFromUrlRef.current = trackIdFromUrl;
-      setIsSelectingTrack(true);
-      lastSelectedTrackIdRef.current = foundTrackId;
-      
-      // Hacer fade-out del Intro si está visible
-      const introOverlay = document.querySelector('.intro');
-      if (introOverlay) {
-        gsap.to(introOverlay, {
-          opacity: 0,
-          duration: 0.6,
-          ease: 'power2.in',
-          onComplete: () => {
-            gsap.set(introOverlay, { display: 'none' });
-          }
-        });
-      }
-      
-      setSelectedTrack(foundTrack);
-      setAudioStarted(false);
-      setShowStartButton(false);
-      setLoadingFadedOut(false);
-    } else if (!trackIdFromUrl && lastTrackIdFromUrlRef.current !== null) {
-      // Solo limpiar si realmente no hay trackId en la URL y había uno antes
-      console.log(`[Croquetas25] useEffect auto-select [${runId}]: Limpiando selección (no hay trackId)`);
-      
-      // Hacer fade-out antes de limpiar
-      const contentContainer = document.querySelector('.croquetas25');
-      if (contentContainer) {
-        gsap.to(contentContainer, {
-          opacity: 0,
-          duration: 0.6,
-          ease: 'power2.in',
-          onComplete: () => {
-            processedTrackIdRef.current = null;
-            lastTrackIdFromUrlRef.current = null;
-            setIsSelectingTrack(true);
-            lastSelectedTrackIdRef.current = null;
-            
-            setSelectedTrack(null);
-            setAudioStarted(false);
-            setShowStartButton(false);
-            setLoadingFadedOut(false);
-            
-            // Fade-in después de limpiar (usar requestAnimationFrame en lugar de setTimeout)
-            requestAnimationFrame(() => {
-              if (contentContainer) {
-                gsap.fromTo(contentContainer, 
-                  { opacity: 0 },
-                  { 
-                    opacity: 1, 
-                    duration: 0.8, 
-                    ease: 'power2.out' 
-                  }
-                );
-              }
-            });
-          }
-        });
-      } else {
-        // Si no hay contenedor, hacer cambios directamente
-        processedTrackIdRef.current = null;
-        lastTrackIdFromUrlRef.current = null;
-        isSelectingTrackRef.current = true;
-        lastSelectedTrackIdRef.current = null;
-        
-        setSelectedTrack(null);
-        setAudioStarted(false);
-        setShowStartButton(false);
-        setLoadingFadedOut(false);
-        
-        setTimeout(() => {
-          isSelectingTrackRef.current = false;
-        }, 500);
-      }
+      // NO cambiar la URL - solo establecer el estado interno UNA VEZ
+      setActiveTrackId(defaultId);
+      initializedRef.current = true;
+    } else {
+      setActiveTrackId(currentTrackId);
+      initializedRef.current = true;
     }
-  }, [trackIdFromUrl, tracks, tracksLoading]); // REMOVIDO selectedTrack de dependencias - solo ejecutar cuando trackIdFromUrl cambia
+  }, [tracksLoading, tracks, getTrackIdFromUrl]);
   
   // Callback para cuando se completa una subcarpeta - cambiar al siguiente audio
   const handleSubfolderComplete = useCallback((completedSubfolder) => {
@@ -317,12 +187,6 @@ const Croquetas25 = () => {
     setShowStartButton(false);
     setLoadingFadedOut(false);
     
-    // Resetear refs de selección
-    processedTrackIdRef.current = null;
-    lastTrackIdFromUrlRef.current = null;
-    lastSelectedTrackIdRef.current = null;
-    isSelectingTrackRef.current = false;
-    
     // Limpiar callbacks para evitar que se activen después
     if (triggerCallbackRef.current) {
       triggerCallbackRef.current = null;
@@ -331,41 +195,21 @@ const Croquetas25 = () => {
       voiceCallbackRef.current = null;
     }
     
-    // IMPORTANTE: Resetear refs ANTES de cambiar la URL para evitar auto-selección
-    processedTrackIdRef.current = null;
-    lastTrackIdFromUrlRef.current = null;
-    lastSelectedTrackIdRef.current = null;
-    isSelectingTrackRef.current = false;
-    
-    // Falsificar URL sin navegar realmente
-    if (typeof window !== 'undefined') {
-      const basePath = '/nachitos-de-nochevieja';
-      const currentPath = window.location.pathname;
-      console.log('[exitCroqueta] URL actual antes de cambiar:', currentPath);
-      
-      // IMPORTANTE: Usar replaceState en lugar de pushState para reemplazar la entrada actual
-      // y asegurarnos de que la URL cambie correctamente
-      window.history.replaceState({ trackId: null }, '', basePath);
-      
-      // Forzar actualización del pathname leyendo la nueva URL
-      // A veces window.location.pathname no se actualiza inmediatamente, así que forzamos la lectura
-      const newPathname = window.location.pathname;
-      console.log('[exitCroqueta] Nueva URL después de replaceState:', newPathname);
-      
-      // Resetear trackIdFromUrl directamente a null ya que sabemos que la URL base no tiene trackId
-      // Esto evita problemas con getTrackIdFromUrl que puede no detectar el cambio inmediatamente
-      console.log('[exitCroqueta] Reseteando trackIdFromUrl a null');
-      setTrackIdFromUrl(null);
-      
-      // Verificar que la URL realmente cambió
-      setTimeout(() => {
-        const verifyPath = window.location.pathname;
-        console.log('[exitCroqueta] Verificación de URL después de 100ms:', verifyPath);
-        if (verifyPath !== basePath) {
-          console.warn('[exitCroqueta] La URL no cambió correctamente, forzando cambio');
-          window.history.replaceState({ trackId: null }, '', basePath);
-        }
-      }, 100);
+    // NO cambiar la URL - la URI es solo lectura
+    // Solo resetear el estado interno y volver a la croqueta por defecto
+    if (typeof window !== 'undefined' && tracks.length > 0) {
+      // Buscar el track de Nachitos de Nochevieja como por defecto
+      const nachitosTrack = tracks.find(track => {
+        const normalizedName = track.name?.toLowerCase().replace(/\s+/g, '-') || '';
+        const normalizedId = (track.id || '').toLowerCase().replace(/\s+/g, '-');
+        return normalizedName.includes('nachitos-de-nochevieja') || 
+               normalizedName.includes('nachitos de nochevieja') ||
+               normalizedId === 'nachitos-de-nochevieja';
+      });
+      const defaultId = nachitosTrack 
+        ? (nachitosTrack.id || nachitosTrack.name).toLowerCase().replace(/\s+/g, '-')
+        : 'nachitos-de-nochevieja';
+      setActiveTrackId(defaultId);
     }
     
     // 5. Fade-in del contenido después de un breve delay
@@ -411,7 +255,7 @@ const Croquetas25 = () => {
     return null;
   };
   
-  const { isLoading: imagesLoading, preloadProgress: imagesProgress, seekToImagePosition } = useGallery(selectedTrack, handleSubfolderComplete, handleAllComplete);
+  const { isLoading: imagesLoading, preloadProgress: imagesProgress, seekToImagePosition } = useGallery(selectedTrack, handleSubfolderComplete, handleAllComplete, null, audioStarted);
   
   // Memoizar audioSrcs para evitar recálculos innecesarios que causan re-montaje del AudioProvider
   const audioSrcs = useMemo(() => {
@@ -419,15 +263,8 @@ const Croquetas25 = () => {
     return selectedTrack?.srcs || (selectedTrack?.src ? [selectedTrack.src] : []);
   }, [selectedTrack?.id, selectedTrack?.srcs, selectedTrack?.src]); // Solo recalcular si cambia el ID o los srcs
   
-  const isDirectUri = !!trackIdFromUrl;
+  const isDirectUri = !!activeTrackId;
   
-  // Resetear isSelectingTrack cuando selectedTrack cambia (después de que se complete la selección)
-  useEffect(() => {
-    if (selectedTrack && isSelectingTrack) {
-      // El track se ha seleccionado correctamente, resetear el flag
-      setIsSelectingTrack(false);
-    }
-  }, [selectedTrack, isSelectingTrack]);
   
   // Logging para debug en producción
   useEffect(() => {
@@ -440,67 +277,47 @@ const Croquetas25 = () => {
     }
   }, [selectedTrack, audioSrcs]);
 
-  const handleTrackSelect = useCallback(async (track) => {
-    // Evitar selecciones múltiples
-    if (isSelectingTrack) {
-      console.log('[Croquetas25] handleTrackSelect: Ya hay una selección en curso, ignorando');
-      return;
-    }
+  // Cuando se hace clic en una croqueta normal: solo cambiar la activa mostrada
+  // NO cambiar la URL - la URI es solo lectura
+  const handleTrackSelect = useCallback((track) => {
+    const trackIdForUrl = (track.id || track.name).toLowerCase().replace(/\s+/g, '-');
+    // Solo actualizar el estado interno - NO cambiar location
+    setActiveTrackId(trackIdForUrl);
+  }, []);
+
+  // Cuando se hace clic en la croqueta activa: establecer selectedTrack y mostrar botón de inicio
+  const handleStartPlayback = useCallback(async (e) => {
+    // Buscar el track según activeTrackId
+    const normalizedTrackId = activeTrackId.toLowerCase().replace(/\s+/g, '-');
+    const trackToUse = tracks.find(track => {
+      const normalizedId = (track.id || track.name).toLowerCase().replace(/\s+/g, '-');
+      return normalizedId === normalizedTrackId;
+    });
     
-    const trackIdForUrl = track.id || track.name.toLowerCase().replace(/\s+/g, '-');
+    if (!trackToUse) return;
     
-    // Si ya está seleccionado este track, no hacer nada
-    if (lastSelectedTrackIdRef.current === trackIdForUrl && selectedTrack?.id === track.id) {
-      console.log('[Croquetas25] handleTrackSelect: Track ya seleccionado, ignorando');
-      return;
-    }
-    
-    // Si este trackId ya fue procesado recientemente, no hacer nada (protección contra StrictMode)
-    if (processedTrackIdRef.current === trackIdForUrl) {
-      console.log('[Croquetas25] handleTrackSelect: TrackId ya procesado recientemente, ignorando');
-      return;
-    }
-    
-    console.log('[Croquetas25] handleTrackSelect: Seleccionando track', track.name);
-    
-    // Marcar como procesado ANTES de cualquier actualización de estado
-    processedTrackIdRef.current = trackIdForUrl;
-    setIsSelectingTrack(true);
-    lastSelectedTrackIdRef.current = trackIdForUrl;
-    lastTrackIdFromUrlRef.current = trackIdForUrl; // Sincronizar ANTES de actualizar estado
-    
-    // Hacer fade-out del Intro si está visible
-    const introOverlay = document.querySelector('.intro');
-    if (introOverlay) {
-      await new Promise(resolve => {
-        gsap.to(introOverlay, {
-          opacity: 0,
-          duration: 0.6,
-          ease: 'power2.in',
-          onComplete: () => {
-            gsap.set(introOverlay, { display: 'none' });
-            resolve();
-          }
-        });
-      });
-    }
-    
-    // Actualizar el estado directamente (sin pasar por el efecto automático)
-    setSelectedTrack(track);
+    // Establecer selectedTrack y ocultar Intro
+    setSelectedTrack(trackToUse);
     setAudioStarted(false);
     setShowStartButton(false);
     setLoadingFadedOut(false);
     
-    // Actualizar la URL después de actualizar el estado
-    if (typeof window !== 'undefined') {
-      const newPath = `/nachitos-de-nochevieja/${trackIdForUrl}`;
-      window.history.pushState({ trackId: trackIdForUrl }, '', newPath);
+    // Ocultar el Intro y mostrar el botón de inicio
+    const introOverlay = document.querySelector('.intro');
+    if (introOverlay) {
+      gsap.to(introOverlay, {
+        opacity: 0,
+        duration: 0.6,
+        ease: 'power2.in',
+        onComplete: () => {
+          gsap.set(introOverlay, { display: 'none' });
+          setShowStartButton(true);
+        }
+      });
+    } else {
+      setShowStartButton(true);
     }
-    
-    // NO actualizar trackIdFromUrl aquí para evitar que el efecto automático se ejecute
-    // El efecto automático solo debe ejecutarse cuando cambia la URL manualmente (popstate)
-    // El estado isSelectingTrack se reseteará automáticamente cuando selectedTrack cambie (ver efecto más abajo)
-  }, [selectedTrack, isSelectingTrack]);
+  }, [activeTrackId, tracks]);
 
   const handleClick = async (e) => {
     if (!audioStarted && selectedTrack && showStartButton && startButtonRef.current) {
@@ -719,7 +536,10 @@ const Croquetas25 = () => {
 
   // Determinar qué capas deben estar visibles
   const showTracksLoading = tracksLoading;
-  const showIntro = !tracksLoading && tracks.length > 0 && (!selectedTrack || (isDirectUri && !audioStarted));
+  // El Intro siempre debe estar visible hasta que el usuario haga clic en la croqueta activa
+  // Solo se oculta cuando audioStarted es true (después del clic del usuario)
+  // IMPORTANTE: No depende de loadingFadedOut - debe estar visible siempre hasta que el usuario haga clic
+  const showIntro = !tracksLoading && tracks.length > 0 && !audioStarted;
   const showBackground = true; // Siempre visible
   const showLoading = selectedTrack && !loadingFadedOut && !audioStarted;
   const showContent = selectedTrack && audioSrcs.length > 0;
@@ -727,6 +547,9 @@ const Croquetas25 = () => {
 
   // Ref para el contenedor principal para animaciones de fade
   const mainContainerRef = useRef(null);
+  
+  // La croqueta activa es simplemente activeTrackId
+  const introSelectedTrackId = activeTrackId;
   
   // Fade-in inicial del contenedor
   useEffect(() => {
@@ -741,6 +564,20 @@ const Croquetas25 = () => {
   return (
     <div className="croquetas25" ref={mainContainerRef} onClick={handleClick}>
       {/* Capa 1: Background/Diagonales - Siempre presente */}
+      {/* Capa 2: Loading Unificado - Siempre presente, visible según condiciones */}
+      <UnifiedLoadingIndicator 
+        imagesLoading={imagesLoading}
+        imagesProgress={imagesProgress}
+        isDirectUri={isDirectUri}
+        audioStarted={audioStarted}
+        showStartButton={showStartButton}
+        loadingFadedOut={loadingFadedOut}
+        setLoadingFadedOut={setLoadingFadedOut}
+        setAudioStarted={setAudioStarted}
+        selectedTrack={selectedTrack}
+        isVisible={showLoading}
+        tracksLoading={tracksLoading}
+      />
       {showContent ? (
         <AudioProvider key={selectedTrack?.id || 'no-track'} audioSrcs={audioSrcs}>
           <AllCompleteHandler />
@@ -750,19 +587,6 @@ const Croquetas25 = () => {
             selectedTrack={audioStarted ? selectedTrack : null}
             showOnlyDiagonales={!audioStarted}
             onAllComplete={handleAllComplete}
-          />
-          {/* Capa 2: Loading - Siempre presente, visible según condiciones */}
-          <UnifiedLoadingIndicator 
-            imagesLoading={imagesLoading}
-            imagesProgress={imagesProgress}
-            isDirectUri={isDirectUri}
-            audioStarted={audioStarted}
-            showStartButton={showStartButton}
-            loadingFadedOut={loadingFadedOut}
-            setLoadingFadedOut={setLoadingFadedOut}
-            setAudioStarted={setAudioStarted}
-            selectedTrack={selectedTrack}
-            isVisible={showLoading}
           />
           {/* Capa 3: Contenido principal */}
           <UnifiedContentManager
@@ -777,7 +601,6 @@ const Croquetas25 = () => {
             handleClick={handleClick}
             selectedTrack={selectedTrack}
             loadingFadedOut={loadingFadedOut}
-            isSelectingTrack={isSelectingTrack}
           />
           {/* Capa 4: Handlers y componentes funcionales */}
           <AudioStarter audioStarted={audioStarted} />
@@ -788,7 +611,7 @@ const Croquetas25 = () => {
             typewriterInstanceRef={typewriterInstanceRef}
           />
           <LoadingProgressHandler onTriggerCallbackRef={triggerCallbackRef} audioStarted={audioStarted} />
-          <AudioAnalyzerWrapper onBeat={handleBeat} onVoice={handleVoice} />
+          {audioStarted && <AudioAnalyzerWrapper onBeat={handleBeat} onVoice={handleVoice} />}
           {/* Capa 5: UI Elements - Visible cuando hay contenido activo */}
           {showUI && (
             <>
@@ -818,29 +641,20 @@ const Croquetas25 = () => {
         <DiagonalesOnly />
       )}
       
-      {/* Capa 6: Intro - Visible cuando no hay track seleccionado o es direct URI sin audio */}
+      {/* Capa 6: Intro - Siempre visible hasta que el usuario haga clic en la croqueta activa */}
       {showIntro && (
         <Intro 
           tracks={tracks} 
           onTrackSelect={handleTrackSelect}
-          onStartPlayback={isDirectUri && selectedTrack ? handleClick : null}
-          selectedTrackId={trackIdFromUrl ? trackIdFromUrl.toLowerCase().replace(/\s+/g, '-') : 'nachitos-de-nochevieja'}
+          onStartPlayback={!audioStarted ? handleStartPlayback : null}
+          selectedTrackId={introSelectedTrackId}
           isDirectUri={isDirectUri}
           isVisible={showIntro}
           keepBlurVisible={selectedTrack && audioStarted}
         />
       )}
       
-      {/* Capa 7: Loading inicial de tracks - Visible solo al cargar tracks */}
-      {showTracksLoading && (
-        <div className="croquetas25__tracks-loading">
-          <div className="image-preloader">
-            <div className="image-preloader__content">
-              <div className="image-preloader__text">Cargando canciones...</div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* El loader unificado ahora maneja también la carga de tracks */}
     </div>
   );
 };
@@ -996,7 +810,7 @@ const AudioStarter = ({ audioStarted }) => {
   return null;
 };
 
-const UnifiedLoadingIndicator = ({ imagesLoading, imagesProgress, isDirectUri, audioStarted, loadingFadedOut, setLoadingFadedOut, setAudioStarted, selectedTrack }) => {
+const UnifiedLoadingIndicator = ({ imagesLoading, imagesProgress, isDirectUri, audioStarted, loadingFadedOut, setLoadingFadedOut, setAudioStarted, selectedTrack, tracksLoading }) => {
   const { loadingProgress: audioProgress, isLoaded: audioLoaded, audioRef } = useAudio();
   const loadingRef = useRef(null);
   const fadeoutStartedRef = useRef(false);
@@ -1144,10 +958,15 @@ const UnifiedLoadingIndicator = ({ imagesLoading, imagesProgress, isDirectUri, a
   const visibilityAnimationRef = useRef(null);
   const lastVisibilityStateRef = useRef(null);
   
+  // Determinar si debe estar visible
+  const shouldShowTracksLoading = tracksLoading;
+  const shouldShowContentLoading = isVisible && !audioStarted && !loadingFadedOut;
+  const shouldBeVisible = shouldShowTracksLoading || shouldShowContentLoading;
+  
   useEffect(() => {
     if (!loadingRef.current) return;
     
-    const currentState = `${isVisible}-${audioStarted}-${loadingFadedOut}`;
+    const currentState = `${shouldBeVisible}-${tracksLoading}-${isVisible}-${audioStarted}-${loadingFadedOut}`;
     
     // Si el estado no ha cambiado, no hacer nada
     if (currentState === lastVisibilityStateRef.current) {
@@ -1162,7 +981,7 @@ const UnifiedLoadingIndicator = ({ imagesLoading, imagesProgress, isDirectUri, a
       visibilityAnimationRef.current = null;
     }
     
-    if (isVisible && !audioStarted && !loadingFadedOut) {
+    if (shouldBeVisible) {
       // Mostrar loading con fade-in suave
       gsap.set(loadingRef.current, { display: 'block', opacity: 0 });
       visibilityAnimationRef.current = gsap.to(loadingRef.current, {
@@ -1194,13 +1013,25 @@ const UnifiedLoadingIndicator = ({ imagesLoading, imagesProgress, isDirectUri, a
         visibilityAnimationRef.current = null;
       }
     };
-  }, [isVisible, audioStarted, loadingFadedOut]);
+  }, [shouldBeVisible, tracksLoading, isVisible, audioStarted, loadingFadedOut]);
   
   // Si no debe estar visible, no renderizar
-  if (!isVisible || audioStarted || loadingFadedOut) {
+  if (!shouldBeVisible) {
     return null;
   }
   
+  // Si está cargando tracks, mostrar mensaje simple
+  if (shouldShowTracksLoading) {
+    return (
+      <div className="image-preloader croquetas25__loading-layer" ref={loadingRef}>
+        <div className="image-preloader__content">
+          <div className="image-preloader__text">Cargando canciones...</div>
+        </div>
+      </div>
+    );
+  }
+  
+  // Si está cargando contenido, mostrar KITTLoader
   const combinedProgress = everythingReady ? 100 : Math.round((imagesProgress + audioProgress) / 2);
   const showFast = combinedProgress >= 95;
   
@@ -1228,7 +1059,6 @@ const UnifiedContentManager = ({
   handleClick,
   selectedTrack,
   loadingFadedOut,
-  isSelectingTrack
 }) => {
   const { isLoaded, audioRef, audioContextRef } = useAudio();
   const buttonRef = useRef(null);
@@ -1266,7 +1096,7 @@ const UnifiedContentManager = ({
   useEffect(() => {
     if (!everythingReady || !loadingFadedOut) return;
     
-    const currentState = `${everythingReady}-${loadingFadedOut}-${isDirectUri}-${audioStarted}`;
+    const currentState = `${everythingReady}-${loadingFadedOut}-${isDirectUri}-${audioStarted}-${showStartButton}`;
     
     // Si el estado no ha cambiado, no hacer nada (protección contra StrictMode)
     if (currentState === lastAudioStartStateRef.current) {
@@ -1275,55 +1105,18 @@ const UnifiedContentManager = ({
     lastAudioStartStateRef.current = currentState;
     
     if (isDirectUri) {
-      // Si hay trackId en la URL, mostrar botón de inicio
-      if (!showStartButton && !audioStarted) {
-        setShowStartButton(true);
-      }
+      // Si hay trackId en la URL, NO mostrar automáticamente el botón de inicio
+      // El botón solo se mostrará cuando el usuario haga clic en la croqueta activa del Intro
+      // Esto se maneja en handleStartPlayback
+      // IMPORTANTE: Si el usuario ya hizo clic y showStartButton es true, mantenerlo así
+      // No hacer nada aquí para acceso directo por URI - preservar el estado del botón
+      return; // Salir temprano para no afectar el estado del botón
     } else {
-      // Si no hay trackId, iniciar automáticamente cuando todo esté listo
-      if (showStartButton) {
-        setShowStartButton(false);
-      }
-      
-      // Solo intentar iniciar si no se ha intentado ya y audio no está iniciado
-      // IMPORTANTE: Verificar que no estemos en medio de una selección de track
-      if (!audioStarted && !audioStartAttemptedRef.current && everythingReady && loadingFadedOut && !isSelectingTrack) {
-        audioStartAttemptedRef.current = true;
-        console.log('[UnifiedContentManager] Iniciando audio automáticamente');
-        
-        // En móviles, necesitamos inicializar el AudioContext
-        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-        const isAndroid = /Android/.test(navigator.userAgent);
-        const isMobile = isIOS || isAndroid;
-        
-        if (isMobile) {
-          const audioContext = audioContextRef?.current || window.__globalAudioContext;
-          
-          // Si el AudioContext existe pero está suspendido, intentar resumirlo
-          if (audioContext && audioContext.state === 'suspended') {
-            // Intentar resumir el AudioContext, pero si falla, esperar al primer toque
-            audioContext.resume().then(() => {
-              console.log('[UnifiedContentManager] AudioContext resumido antes de iniciar audio');
-              setAudioStarted(true);
-            }).catch(err => {
-              console.warn('[UnifiedContentManager] Error resumiendo AudioContext:', err);
-              // Si falla, esperar al primer toque del usuario para inicializar
-              setAudioStarted(true); // Continuar de todas formas, el audio se iniciará en el primer toque
-            });
-          } else if (!audioContext) {
-            // Si no hay AudioContext, esperar a que se inicialice
-            console.log('[UnifiedContentManager] Esperando inicialización del AudioContext en móvil');
-            setAudioStarted(true); // Marcar como iniciado, pero el audio esperará al primer toque
-          } else {
-            // AudioContext ya está activo
-            setAudioStarted(true);
-          }
-        } else {
-          setAudioStarted(true);
-        }
-      }
+      // NUNCA iniciar automáticamente - siempre requiere un clic del usuario
+      // El usuario debe hacer clic en la croqueta activa del Intro para empezar
+      // No hacer nada aquí - el audio solo se iniciará cuando el usuario haga clic
     }
-  }, [everythingReady, loadingFadedOut, isDirectUri, showStartButton, audioStarted, setShowStartButton, setAudioStarted, audioContextRef, isSelectingTrack]);
+  }, [everythingReady, loadingFadedOut, isDirectUri, showStartButton, audioStarted, setShowStartButton, setAudioStarted, audioContextRef]);
   
   // Resetear el ref cuando cambia el track seleccionado
   useEffect(() => {
@@ -1349,9 +1142,14 @@ const UnifiedContentManager = ({
     buttonAnimationStartedRef.current = false;
   }, [selectedTrack]);
   
-  if (!(isDirectUri && everythingReady && loadingFadedOut && showStartButton && !audioStarted)) {
+  // Mostrar el botón cuando showStartButton es true (tanto para acceso directo por URI como para selección normal)
+  // No requerir everythingReady y loadingFadedOut porque el usuario ya hizo clic
+  if (!(showStartButton && !audioStarted)) {
     return null;
   }
+  
+  // Si no está todo listo, el botón se muestra pero no es clickeable hasta que todo esté listo
+  const isReady = everythingReady && loadingFadedOut;
   
   return (
     <div 
@@ -1360,12 +1158,16 @@ const UnifiedContentManager = ({
         startButtonRef.current = el;
         buttonRef.current = el;
       }}
-      onClick={handleClick}
+      onClick={isReady ? handleClick : undefined}
+      style={{ 
+        pointerEvents: isReady ? 'auto' : 'none',
+        opacity: isReady ? 1 : 0.5
+      }}
     >
       <Croqueta
         index={selectedTrack ? 0 : 999}
         text={selectedTrack?.name || "Comenzar"}
-        onClick={handleClick}
+        onClick={isReady ? handleClick : undefined}
         rotation={0}
         className="croquetas25-start-croqueta__button"
       />
@@ -1425,7 +1227,7 @@ const AudioAnalyzerWrapper = ({ onBeat, onVoice }) => {
 const SeekWrapper = ({ selectedTrack }) => {
   const { analyserRef, audioRef, currentIndex, seekToAudio } = useAudio();
   const [squares, setSquares] = useState([]);
-  const { seekToImagePosition } = useGallery(selectedTrack, null, null, null);
+  const { seekToImagePosition } = useGallery(selectedTrack, null, null, null, true);
   
   useEffect(() => {
     const updateSquares = () => {
@@ -1474,6 +1276,7 @@ const SubfolderAudioController = ({ selectedTrack }) => {
     
     completedSubfoldersRef.current.clear();
     
+    // Handler para cuando se completa una subcarpeta (cambio por imágenes)
     window.__subfolderCompleteHandler = (completedSubfolder, nextAudioIndex) => {
       if (completedSubfoldersRef.current.has(completedSubfolder)) {
         console.log(`[SubfolderAudioController] Subcarpeta ${completedSubfolder} ya procesada`);
@@ -1482,7 +1285,7 @@ const SubfolderAudioController = ({ selectedTrack }) => {
       
       if (nextAudioIndex !== null && currentIndex !== nextAudioIndex) {
         completedSubfoldersRef.current.add(completedSubfolder);
-        console.log(`[SubfolderAudioController] Cambiando de audio ${currentIndex} a ${nextAudioIndex}`);
+        console.log(`[SubfolderAudioController] Cambiando de audio ${currentIndex} a ${nextAudioIndex} (por subcarpeta completa)`);
         seekToAudio(nextAudioIndex, 0);
       } else {
         completedSubfoldersRef.current.add(completedSubfolder);
@@ -1490,8 +1293,26 @@ const SubfolderAudioController = ({ selectedTrack }) => {
       }
     };
     
+    // Handler para cuando termina un audio automáticamente
+    const handleAudioSegmentEnded = (event) => {
+      const { currentIndex: endedIndex, nextIndex, isLastAudio } = event.detail;
+      
+      if (isLastAudio) {
+        console.log(`[SubfolderAudioController] Último audio terminó, no cambiar`);
+        return;
+      }
+      
+      if (nextIndex !== null && nextIndex !== undefined) {
+        console.log(`[SubfolderAudioController] Audio ${endedIndex} terminó automáticamente, cambiando a ${nextIndex}`);
+        seekToAudio(nextIndex, 0);
+      }
+    };
+    
+    window.addEventListener('audioSegmentEnded', handleAudioSegmentEnded);
+    
     return () => {
       window.__subfolderCompleteHandler = null;
+      window.removeEventListener('audioSegmentEnded', handleAudioSegmentEnded);
     };
   }, [selectedTrack, seekToAudio, currentIndex]);
 
@@ -1598,24 +1419,24 @@ const GuionManager = ({ selectedTrack, typewriterInstanceRef, isPausedByHold }) 
     setCurrentSubfolder(foundSubfolder);
   }, [selectedTrack, currentIndex]);
   
-  // Obtener el guión: priorizar el de la raíz, luego el de la subcarpeta actual
+  // Obtener el guión: priorizar el de la subcarpeta actual, luego el de la raíz
   const getCurrentGuion = () => {
     if (!selectedTrack || !selectedTrack.guionesBySubfolder) {
       return selectedTrack?.guion;
     }
     
-    // Priorizar guión de la raíz
-    const rootGuion = selectedTrack.guionesBySubfolder['__root__'];
-    if (rootGuion && rootGuion.textos) {
-      return rootGuion;
-    }
-    
-    // Si no hay guión en la raíz, usar el de la subcarpeta actual
+    // Priorizar guión de la subcarpeta actual si existe
     if (currentSubfolder) {
       const subfolderGuion = selectedTrack.guionesBySubfolder[currentSubfolder];
       if (subfolderGuion && subfolderGuion.textos) {
         return subfolderGuion;
       }
+    }
+    
+    // Si no hay guión en la subcarpeta actual, usar el de la raíz
+    const rootGuion = selectedTrack.guionesBySubfolder['__root__'];
+    if (rootGuion && rootGuion.textos) {
+      return rootGuion;
     }
     
     // Fallback al guión general del track

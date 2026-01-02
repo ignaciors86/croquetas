@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 
-export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onAllComplete = null, currentAudioIndex = null) => {
+export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onAllComplete = null, currentAudioIndex = null, audioStarted = true) => {
   const [allImages, setAllImages] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [preloadProgress, setPreloadProgress] = useState(0);
@@ -61,6 +61,8 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
       };
       img.onerror = () => {
         updateState('error');
+        // Silenciar completamente los errores de carga de imágenes (404, etc.)
+        // Solo actualizar el estado sin mostrar warnings en consola
         resolve({ status: 'rejected', reason: `Failed to load ${imagePath}` });
       };
       
@@ -143,6 +145,21 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
   }, [preloadImage, BATCH_SIZE, BATCH_DELAY, MAX_CONCURRENT_LOADS]);
 
   useEffect(() => {
+    // Solo cargar imágenes cuando el audio haya empezado o cuando no hay audio (para tracks sin audio)
+    // Esto evita cargar recursos antes de que estén disponibles
+    if (!selectedTrack) {
+      return;
+    }
+    
+    const hasAudio = selectedTrack?.srcs && selectedTrack.srcs.length > 0;
+    if (!audioStarted && hasAudio) {
+      // Si hay audio pero no ha empezado, no cargar imágenes todavía
+      setIsLoading(true);
+      setPreloadProgress(0);
+      setAllImages([]); // Limpiar imágenes para evitar intentos de carga
+      return;
+    }
+
     const loadImages = async () => {
       try {
         // Las imágenes ahora vienen del manifest en useTracks
@@ -328,7 +345,7 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
     };
 
     loadImages();
-  }, [selectedTrack, preloadImage, loadImagesInBatches]);
+  }, [selectedTrack, preloadImage, loadImagesInBatches, audioStarted]);
 
   // Determinar la subcarpeta actual basándose en el audio
   // Para Nachitos de Nochevieja siempre retorna null (usa todas las imágenes)
@@ -560,6 +577,9 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
         
         lastSubfolderRef.current = imageSubfolder;
         
+        // Guardar índice ANTES de avanzar (para poder retornar la imagen)
+        const currentImageIndex = subfolderIndex;
+        
         // Avanzar índice de esta subcarpeta
         subfolderIndex++;
         let subfolderCompletedCycle = false;
@@ -585,22 +605,51 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
               subfolderCurrentIndexRef.current.set(normalizedSubfolder, subfolderIndex);
               currentIndexRef.current = imageIndices[0] || 0;
               isLastImageRef.current = true;
+              // Retornar la imagen actual (ya fue marcada como usada)
               return imagePath;
             } else {
-              // Aún hay imágenes sin usar, resetear y continuar
-              subfolderImageIndicesRef.current.get(normalizedImageSubfolder)?.forEach(idx => {
-                const imgObj = allImages[idx];
+              // Aún hay imágenes sin usar, buscar la siguiente imagen 'ready' sin resetear
+              // Buscar desde el principio del array
+              let foundNextReady = false;
+              let nextReadyIndex = -1;
+              
+              for (let i = 0; i < imageIndices.length; i++) {
+                const imgObj = allImages[imageIndices[i]];
                 const imgPath = typeof imgObj === 'object' ? (imgObj.path || imgObj) : imgObj;
                 const state = imageStatesRef.current.get(imgPath);
-                if (state && state.state === 'used') {
-                  imageStatesRef.current.set(imgPath, { ...state, state: 'ready' });
+                if (state && state.state === 'ready' && state.imgElement && state.imgElement.complete) {
+                  foundNextReady = true;
+                  nextReadyIndex = i;
+                  break;
                 }
-              });
-              if (imageSubfolder !== null && subfolderCountsRef.current.has(imageSubfolder)) {
-                subfolderCountsRef.current.get(imageSubfolder).used = 0;
               }
-              subfolderIndex = 0;
-              subfolderCompletedCycle = true;
+              
+              if (foundNextReady) {
+                // Hay una imagen ready disponible, reiniciar el bucle desde este índice
+                subfolderIndex = nextReadyIndex;
+                subfolderCurrentIndexRef.current.set(normalizedSubfolder, nextReadyIndex);
+                // Retornar la imagen actual primero (ya fue marcada como usada)
+                // Luego, en la siguiente llamada, se procesará la nueva imagen ready
+                subfolderCompletedCycle = true;
+                return imagePath;
+              } else {
+                // No hay imágenes ready, resetear solo las usadas para poder reutilizarlas
+                subfolderImageIndicesRef.current.get(normalizedImageSubfolder)?.forEach(idx => {
+                  const imgObj = allImages[idx];
+                  const imgPath = typeof imgObj === 'object' ? (imgObj.path || imgObj) : imgObj;
+                  const state = imageStatesRef.current.get(imgPath);
+                  if (state && state.state === 'used') {
+                    imageStatesRef.current.set(imgPath, { ...state, state: 'ready' });
+                  }
+                });
+                if (imageSubfolder !== null && subfolderCountsRef.current.has(imageSubfolder)) {
+                  subfolderCountsRef.current.get(imageSubfolder).used = 0;
+                }
+                subfolderIndex = 0;
+                subfolderCompletedCycle = true;
+                // Retornar la imagen actual (ya fue marcada como usada)
+                return imagePath;
+              }
             }
           } else if (!isLastSubfolder) {
             // Para tracks normales: resetear si NO es el último tramo

@@ -66,6 +66,7 @@ const BorderSquaresCanvas = ({
           scale: 0,
           z: -600,
           opacity: 0.5,
+          lastOpacity: 0.5, // Para suavizar cambios de opacidad
           startTime: Date.now(),
           intensity: square.data?.intensity ?? 0.5,
           type: square.type,
@@ -102,38 +103,36 @@ const BorderSquaresCanvas = ({
           data.scale = targetScale * progress;
           data.z = -600 + (400 - (-600)) * progress;
           
-          // Calcular opacidad
+          // Calcular opacidad objetivo (sin cambios basados en tamaño)
           const fadeStartProgress = 0.6;
+          let targetOpacity = 0.5;
           if (progress >= fadeStartProgress) {
             const fadeProgress = (progress - fadeStartProgress) / (1.0 - fadeStartProgress);
-            data.opacity = 0.5 * (1 - fadeProgress);
-          } else {
-            data.opacity = 0.5;
+            targetOpacity = 0.5 * (1 - fadeProgress);
           }
           
-          // Calcular opacidad basada en tamaño
-          const viewportWidth = window.innerWidth;
-          const viewportHeight = window.innerHeight;
-          const currentSize = 50 + (300 - 50) * progress;
-          const maxRatio = Math.max(currentSize / viewportWidth, currentSize / viewportHeight);
-          if (maxRatio > 0.7) {
-            data.opacity *= Math.max(0, 1 - ((maxRatio - 0.7) / 0.3));
+          // Suavizar cambios de opacidad para evitar parpadeo
+          if (data.lastOpacity === undefined) {
+            data.lastOpacity = targetOpacity;
           }
+          const opacitySmoothing = 0.2; // Suavizar cambios de opacidad
+          data.opacity = data.lastOpacity * (1 - opacitySmoothing) + targetOpacity * opacitySmoothing;
+          data.lastOpacity = data.opacity;
         }
       });
     };
     
-    // Actualizar más frecuentemente para mayor reactividad (cada 8ms = ~120fps)
-    const interval = setInterval(updateProgress, 8);
+    // Actualizar más frecuentemente para mayor suavidad (cada 4ms = ~250fps para movimiento más fluido)
+    const interval = setInterval(updateProgress, 4);
     
     return () => clearInterval(interval);
   }, [borderSquares, animationTimelinesRef]);
   
-  // Calcular color basado en música (más sensible y reactivo)
-  const calculateColorFromMusic = useCallback((squareData) => {
+  // Calcular color basado en música (simple y suave, solo cambio de color)
+  const calculateColorFromMusic = useCallback(() => {
     if (!dataArrayRef?.current || !analyserRef?.current) {
-      // Fallback: color basado en tiempo
-      const timeBasedHue = (Date.now() / 50) % 360; // Más rápido
+      // Fallback: color basado en tiempo (muy lento para cambio suave)
+      const timeBasedHue = (Date.now() / 200) % 360;
       return {
         hue: Math.round(timeBasedHue),
         saturation: 70,
@@ -147,51 +146,43 @@ const BorderSquaresCanvas = ({
       
       analyser.getByteFrequencyData(dataArray);
       
-      // Calcular métricas de audio con mayor sensibilidad
+      // Calcular métricas básicas de audio
       let sum = 0;
       let bassSum = 0;
       let trebleSum = 0;
-      let midSum = 0;
-      const bassRange = Math.floor(dataArray.length * 0.15); // Aumentado de 10% a 15%
-      const midRange = Math.floor(dataArray.length * 0.5);
-      const trebleRange = Math.floor(dataArray.length * 0.7); // Aumentado de 80% a 70%
+      const bassRange = Math.floor(dataArray.length * 0.15);
+      const trebleRange = Math.floor(dataArray.length * 0.7);
       
       for (let i = 0; i < dataArray.length; i++) {
         const normalized = dataArray[i] / 255;
         sum += normalized;
         if (i < bassRange) bassSum += normalized;
-        if (i >= midRange && i < trebleRange) midSum += normalized;
         if (i >= trebleRange) trebleSum += normalized;
       }
       
       const average = sum / dataArray.length;
       const bassEnergy = bassRange > 0 ? bassSum / bassRange : 0;
-      const midEnergy = (trebleRange - midRange) > 0 ? midSum / (trebleRange - midRange) : 0;
       const trebleEnergy = (dataArray.length - trebleRange) > 0 ? trebleSum / (dataArray.length - trebleRange) : 0;
       
-      // Calcular spectral centroid con mayor peso en frecuencias altas
+      // Calcular spectral centroid simple
       let weightedSum = 0;
       let magnitudeSum = 0;
       for (let i = 0; i < dataArray.length; i++) {
         const magnitude = dataArray[i] / 255;
-        // Dar más peso a frecuencias altas para mayor reactividad
-        const weight = i * (1 + magnitude * 0.5);
-        weightedSum += weight * magnitude;
+        weightedSum += i * magnitude;
         magnitudeSum += magnitude;
       }
       const spectralCentroid = magnitudeSum > 0 ? weightedSum / magnitudeSum / dataArray.length : 0;
       
-      // Calcular color con mayor sensibilidad y variación
-      // Hue: más variación basada en spectral centroid
-      const hue = (spectralCentroid * 400) % 360; // Aumentado de 360 a 400 para más variación
+      // Calcular color simple y suave
+      // Hue: variación suave basada en spectral centroid
+      const hue = (spectralCentroid * 300) % 360;
       
-      // Saturation: más reactiva a la energía total
-      const totalEnergy = (bassEnergy + midEnergy + trebleEnergy) / 3;
-      const saturation = Math.min(100, Math.max(60, 60 + totalEnergy * 60)); // Rango más amplio: 60-100%
+      // Saturation: fija para consistencia
+      const saturation = 70;
       
-      // Lightness: más reactiva a la intensidad y energía
-      const energyFactor = (bassEnergy * 0.4 + midEnergy * 0.3 + trebleEnergy * 0.3);
-      const lightness = Math.min(85, Math.max(45, 45 + (energyFactor + squareData.intensity) * 50)); // Rango más amplio
+      // Lightness: variación muy suave basada en energía promedio
+      const lightness = Math.min(70, Math.max(50, 50 + average * 20));
       
       return {
         hue: Math.round(hue),
@@ -199,7 +190,7 @@ const BorderSquaresCanvas = ({
         lightness: Math.round(lightness)
       };
     } catch (error) {
-      const timeBasedHue = (Date.now() / 50) % 360;
+      const timeBasedHue = (Date.now() / 200) % 360;
       return {
         hue: Math.round(timeBasedHue),
         saturation: 70,
@@ -228,91 +219,8 @@ const BorderSquaresCanvas = ({
     return `hsl(${Math.round(finalHue)}, ${Math.round(saturation)}%, ${Math.round(lightness)}%)`;
   }, []);
   
-  // Calcular grosor dinámico del borde basado en frecuencias de audio
-  const calculateDynamicLineWidth = useCallback((squareData) => {
-    if (!dataArrayRef?.current || !analyserRef?.current) {
-      return 1.5; // Grosor base si no hay audio
-    }
-    
-    try {
-      const dataArray = dataArrayRef.current;
-      const analyser = analyserRef.current;
-      
-      analyser.getByteFrequencyData(dataArray);
-      
-      // Dividir el espectro en rangos de frecuencia para ecualización dinámica
-      const bassRange = Math.floor(dataArray.length * 0.1); // 0-10%: graves
-      const lowMidRange = Math.floor(dataArray.length * 0.3); // 10-30%: medios-bajos
-      const midRange = Math.floor(dataArray.length * 0.6); // 30-60%: medios
-      const highMidRange = Math.floor(dataArray.length * 0.8); // 60-80%: medios-altos
-      // 80-100%: agudos
-      
-      // Calcular energía en cada rango
-      let bassEnergy = 0;
-      let lowMidEnergy = 0;
-      let midEnergy = 0;
-      let highMidEnergy = 0;
-      let trebleEnergy = 0;
-      
-      for (let i = 0; i < dataArray.length; i++) {
-        const normalized = dataArray[i] / 255;
-        if (i < bassRange) {
-          bassEnergy += normalized;
-        } else if (i < lowMidRange) {
-          lowMidEnergy += normalized;
-        } else if (i < midRange) {
-          midEnergy += normalized;
-        } else if (i < highMidRange) {
-          highMidEnergy += normalized;
-        } else {
-          trebleEnergy += normalized;
-        }
-      }
-      
-      // Normalizar energías (evitar división por cero)
-      bassEnergy = bassRange > 0 ? bassEnergy / bassRange : 0;
-      lowMidEnergy = (lowMidRange - bassRange) > 0 ? lowMidEnergy / (lowMidRange - bassRange) : 0;
-      midEnergy = (midRange - lowMidRange) > 0 ? midEnergy / (midRange - lowMidRange) : 0;
-      highMidEnergy = (highMidRange - midRange) > 0 ? highMidEnergy / (highMidRange - midRange) : 0;
-      trebleEnergy = (dataArray.length - highMidRange) > 0 ? trebleEnergy / (dataArray.length - highMidRange) : 0;
-      
-      // Combinar energías con pesos diferentes para crear un ecualizador dinámico
-      // Los graves y agudos tienen más impacto visual
-      const combinedEnergy = (
-        bassEnergy * 0.3 +      // Graves: 30%
-        lowMidEnergy * 0.15 +   // Medios-bajos: 15%
-        midEnergy * 0.2 +       // Medios: 20%
-        highMidEnergy * 0.15 +  // Medios-altos: 15%
-        trebleEnergy * 0.2      // Agudos: 20%
-      );
-      
-      // Grosor base más fino
-      const baseLineWidth = 1.5;
-      // Rango dinámico: de 1.5 a 8 píxeles
-      const minLineWidth = 1.5;
-      const maxLineWidth = 8;
-      
-      // Aplicar curva de respuesta no lineal para más dinamismo
-      // Usar exponencial para que los picos sean más pronunciados
-      const energyPower = Math.pow(combinedEnergy, 0.6); // Exponente < 1 para más sensibilidad
-      
-      // Calcular grosor dinámico
-      const dynamicLineWidth = minLineWidth + (maxLineWidth - minLineWidth) * energyPower;
-      
-      // Aplicar suavizado para evitar cambios bruscos
-      if (!squareData.currentLineWidth) {
-        squareData.currentLineWidth = dynamicLineWidth;
-      } else {
-        // Interpolación suave pero rápida para mantener dinamismo
-        const smoothingFactor = 0.3; // Más bajo = más rápido (más dinámico)
-        squareData.currentLineWidth = squareData.currentLineWidth * (1 - smoothingFactor) + dynamicLineWidth * smoothingFactor;
-      }
-      
-      return squareData.currentLineWidth;
-    } catch (error) {
-      return 1.5; // Fallback a grosor base
-    }
-  }, [analyserRef, dataArrayRef]);
+  // Grosor fijo de 1px (sin lógica compleja)
+  const LINE_WIDTH = 1;
   
   // Dibujar un cuadrado con borde
   const drawBorderSquare = useCallback((ctx, square, squareData) => {
@@ -336,9 +244,9 @@ const BorderSquaresCanvas = ({
     const now = Date.now();
     const timeSinceLastUpdate = now - squareData.lastColorUpdate;
     
-    // Actualizar color objetivo cada 16ms (60fps)
-    if (timeSinceLastUpdate >= 16) {
-      const newColor = calculateColorFromMusic(squareData);
+    // Actualizar color objetivo cada 100ms (10fps) para cambios más suaves
+    if (timeSinceLastUpdate >= 100) {
+      const newColor = calculateColorFromMusic();
       
       // Si no hay color anterior, inicializar
       if (!squareData.targetColor) {
@@ -352,9 +260,9 @@ const BorderSquaresCanvas = ({
       squareData.lastColorUpdate = now;
     }
     
-    // Interpolar suavemente hacia el color objetivo
+    // Interpolar suavemente hacia el color objetivo (muy suave para cambio gradual)
     if (squareData.targetColor && squareData.currentColorHSL) {
-      const interpolationSpeed = 0.15; // Velocidad de interpolación (0-1)
+      const interpolationSpeed = 0.03; // Velocidad de interpolación muy lenta para cambio suave
       const hueDiff = Math.abs(squareData.targetColor.hue - squareData.currentColorHSL.hue);
       const hueDiffWrapped = Math.min(hueDiff, 360 - hueDiff);
       
@@ -388,22 +296,19 @@ const BorderSquaresCanvas = ({
       ? `hsl(${Math.round(squareData.currentColorHSL.hue)}, ${Math.round(squareData.currentColorHSL.saturation)}%, ${Math.round(squareData.currentColorHSL.lightness)}%)`
       : '#00ffff';
     
-    // Calcular grosor dinámico del borde basado en frecuencias
-    const dynamicLineWidth = calculateDynamicLineWidth(squareData);
-    
     ctx.save();
     ctx.globalAlpha = squareData.opacity;
     ctx.translate(centerX, centerY);
     
-    // Dibujar borde rectangular con grosor dinámico que ecualiza la música
+    // Dibujar borde rectangular con grosor fijo de 1px
     ctx.strokeStyle = color;
-    ctx.lineWidth = dynamicLineWidth;
-    ctx.lineCap = 'round'; // Bordes redondeados para mejor apariencia
+    ctx.lineWidth = LINE_WIDTH;
+    ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.strokeRect(-finalWidth / 2, -finalHeight / 2, finalWidth, finalHeight);
     
     ctx.restore();
-  }, [calculateColorFromMusic, calculateDynamicLineWidth]);
+  }, [calculateColorFromMusic]);
   
   // Loop principal de renderizado
   useEffect(() => {

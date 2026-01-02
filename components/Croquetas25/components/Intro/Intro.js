@@ -43,47 +43,33 @@ const Intro = ({ tracks, onTrackSelect, onStartPlayback = null, selectedTrackId 
   const handleTrackSelect = useCallback((track, index) => {
     if (isAnimating) return;
     
+    // Si es la croqueta activa (main), no hacer nada - se maneja con onStartPlayback
+    if (isMainCroqueta(track)) {
+      return;
+    }
+    
     if (isDirectUri && selectedTrackId && isMainCroqueta(track)) {
       setCroquetasUnlocked(true);
     }
     
     if (isDirectUri && !croquetasUnlocked && !isMainCroqueta(track)) return;
     
-    setIsAnimating(true);
-    rotationTimelinesRef.current.forEach(tl => tl?.kill());
-
-    const tl = gsap.timeline({
-      onComplete: () => {
-        setIsAnimating(false);
-        onTrackSelect?.(track);
-      }
-    });
-
-    const fadeOut = { opacity: 0, ease: 'power2.in' };
-    titleRef.current && tl.to(titleRef.current, { ...fadeOut, y: -30, duration: 1.2 });
-
-    buttonsRef.current.forEach((buttonRef, i) => {
-      if (!buttonRef) return;
-      tl.to(buttonRef, {
-        ...fadeOut,
-        scale: 0,
-        rotation: `+=${i === index ? 180 : 0}`,
-        duration: 0.8,
-        transformOrigin: 'center center'
-      }, i === index ? 0 : Math.abs(i - index) * 0.1);
-    });
+    // Cuando se hace clic en una croqueta normal, solo cambiar la activa sin animaciones
+    // NO hacer animaciones ni renderizado completo - solo actualizar la URL
+    onTrackSelect?.(track);
   }, [isAnimating, isDirectUri, selectedTrackId, croquetasUnlocked, isMainCroqueta, onTrackSelect]);
 
   const handleCroquetaClick = useCallback((track, index) => (e) => {
     e.stopPropagation();
     e.preventDefault();
-    // Si hay onStartPlayback y es la croqueta activa (main) en acceso directo, usar onStartPlayback
-    if (onStartPlayback && isDirectUri && isMainCroqueta(track)) {
+    // Si es la croqueta activa (main) y hay onStartPlayback, usar onStartPlayback para empezar
+    if (onStartPlayback && isMainCroqueta(track)) {
       onStartPlayback(e);
     } else {
+      // Si es una croqueta normal, solo cambiar la activa sin animaciones
       handleTrackSelect(track, index);
     }
-  }, [handleTrackSelect, onStartPlayback, isDirectUri, isMainCroqueta]);
+  }, [handleTrackSelect, onStartPlayback, isMainCroqueta]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;

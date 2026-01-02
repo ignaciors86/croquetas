@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 export default function TrackPage() {
   return (
     <main>
-      <Suspense fallback={<div>Loading...</div>}>
+      <Suspense fallback={null}>
         <Croquetas />
       </Suspense>
     </main>

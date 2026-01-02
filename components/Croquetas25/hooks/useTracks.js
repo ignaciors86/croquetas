@@ -3,10 +3,9 @@ import { useState, useEffect } from 'react';
 const normalizeName = (name) => name?.toLowerCase().replace(/\s+/g, '-') || '';
 
 /**
- * Hook para cargar tracks desde API route que escanea el directorio en tiempo de ejecución
+ * Hook para cargar tracks desde el manifest JSON
  * - Tracks normales: imágenes secuenciales por subcarpeta, asociadas a audios por subcarpeta
- * - Nachitos de Nochevieja: imágenes mezcladas de todas las carpetas
- * - Orden: __root__ primero, luego subcarpetas alfabéticamente, imágenes dentro de cada subcarpeta alfabéticamente
+ * - Croquetas25: imágenes mezcladas de todas las carpetas
  */
 export const useTracks = () => {
   const [tracks, setTracks] = useState([]);
@@ -15,13 +14,13 @@ export const useTracks = () => {
   useEffect(() => {
     const loadTracks = async () => {
       try {
-        // Cargar tracks desde API route que escanea el directorio en tiempo de ejecución
+        // Cargar manifest desde la API route
         const response = await fetch('/api/tracks');
         if (!response.ok) {
-          throw new Error(`Failed to load tracks: ${response.status}`);
+          throw new Error(`Failed to load tracks manifest: ${response.status}`);
         }
-        const data = await response.json();
-        const { tracks: tracksData } = data;
+        const manifest = await response.json();
+        const { tracks: tracksData } = manifest;
         const tracksMap = new Map();
 
         // Procesar cada track del manifest
@@ -44,12 +43,9 @@ export const useTracks = () => {
           Object.keys(trackData).forEach(subfolder => {
             const subfolderData = trackData[subfolder];
             
-            // Procesar imágenes - ordenar alfabéticamente por nombre
+            // Procesar imágenes
             if (subfolderData.images && subfolderData.images.length > 0) {
-              const sortedImages = [...subfolderData.images].sort((a, b) => {
-                return a.name.localeCompare(b.name);
-              });
-              track.imagesBySubfolder.set(subfolder, sortedImages.map(img => ({
+              track.imagesBySubfolder.set(subfolder, subfolderData.images.map(img => ({
                 path: img.url,
                 originalPath: img.path,
                 subfolder: subfolder,
@@ -79,18 +75,17 @@ export const useTracks = () => {
         const finalTracks = [];
         
         tracksMap.forEach((track, trackKey) => {
-          // Detectar si es Nachitos de Nochevieja
+          // Detectar si es Croquetas25
           const isCroquetas25 = track.name && (
-            track.name.toLowerCase().includes('nachitos de nochevieja') ||
-            track.name.toLowerCase().includes('nachitos-de-nochevieja') ||
-            normalizeName(track.name) === 'nachitos-de-nochevieja'
+            track.name.toLowerCase().includes('croquetas25') ||
+            normalizeName(track.name) === 'croquetas25'
           );
 
           let imagesArray = [];
           let subfolderOrder = [];
 
           if (isCroquetas25) {
-            // SOLO PARA NACHITOS DE NOCHEVIEJA: Intercalar imágenes de TODOS los otros tracks (colecciones)
+            // SOLO PARA CROQUETAS25: Intercalar imágenes de TODOS los otros tracks (colecciones)
             const otherTracks = Array.from(tracksMap.values())
               .filter(t => t.id !== track.id && t.imagesBySubfolder.size > 0)
               .sort((a, b) => a.name.localeCompare(b.name));
@@ -125,7 +120,7 @@ export const useTracks = () => {
               if (!addedAny) break;
             }
 
-            // SubfolderOrder para Nachitos de Nochevieja: todas las subcarpetas de todos los tracks
+            // SubfolderOrder para Croquetas25: todas las subcarpetas de todos los tracks
             const allSubfolders = new Set();
             tracksMap.forEach((otherTrack) => {
               otherTrack.imagesBySubfolder.forEach((_, subfolder) => {

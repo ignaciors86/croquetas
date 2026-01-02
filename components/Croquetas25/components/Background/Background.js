@@ -14,7 +14,7 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
   const lastProgressRef = useRef(0);
   const colorIndexRef = useRef(0);
   const recentImagePositionsRef = useRef([]); // Track de posiciones recientes para evitar solapamientos
-  const { getNextImage, allImages, isLoading, preloadNextImages, isLastImageRef } = useGallery(selectedTrack, null, onAllComplete, currentAudioIndex);
+  const { getNextImage, allImages, isLoading, preloadNextImages, isLastImageRef } = useGallery(selectedTrack, null, onAllComplete, currentAudioIndex, !showOnlyDiagonales);
   const MAX_SQUARES = 50;
   
   // Pre-cargar imágenes próximas cuando cambian las imágenes disponibles
@@ -117,13 +117,15 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
         const marginYPercent = (maxImageHeight / 2) / viewportHeight * 100;
         
         // Área válida considerando márgenes (para que la imagen completa quede dentro)
-        // Expandir significativamente hacia los lados y arriba para usar todo el espacio disponible
-        const sideExpansion = 8; // Expandir 8% más hacia cada lado
-        const topExpansion = 15; // Expandir 15% más hacia arriba
+        // Expandir significativamente hacia los lados y arriba/abajo para usar todo el espacio disponible
+        // En landscape, expandir más para usar todo el espacio disponible
+        const sideExpansion = isPortrait ? 8 : 12; // En landscape, expandir 12% más hacia cada lado
+        const topExpansion = isPortrait ? 15 : 22; // En landscape, expandir 22% más hacia arriba
+        const bottomExpansion = isPortrait ? 0 : 3; // En landscape, expandir 3% más hacia abajo
         const minX = Math.max(0, marginXPercent - sideExpansion); // Más espacio a los lados
         const maxX = Math.min(100, 100 - marginXPercent + sideExpansion); // Más espacio a los lados
         const minY = Math.max(0, marginYPercent - topExpansion); // Mucho más espacio arriba
-        const maxY = Math.min(100, 100 - marginYPercent); // Mantener margen inferior
+        const maxY = Math.min(100, 100 - marginYPercent + bottomExpansion); // Más espacio abajo también
         
         // Zona a evitar (prompt) en coordenadas
         let avoidMinX, avoidMaxX, avoidMinY, avoidMaxY;

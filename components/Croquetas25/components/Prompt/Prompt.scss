@@ -7,9 +7,9 @@
   cursor: unset;
   display: flex;
   flex-direction: row;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 2%;
+  align-items: center; // Centrar verticalmente
+  justify-content: center; // Centrar horizontalmente
+  gap: 2vw; // Separación constante entre KITT y texto
   z-index: 300;
   background: rgba(0, 0, 0, 0.5) !important;
   backdrop-filter: blur(10px);
@@ -24,9 +24,9 @@
   -moz-user-select: none;
   -ms-user-select: none;
   padding: 2.5vh 3vw;
-  min-height: 12vh;
-  transition: min-height 0.4s ease, height 0.4s ease;
   overflow: hidden;
+  // Permitir que el height se adapte al contenido
+  height: auto;
 
   &__kitt {
     position: relative;
@@ -83,10 +83,11 @@
 
   &__text {
     position: relative;
-    flex: 1;
+    flex: 0 1 auto; // No crecer, solo encogerse si es necesario
     width: auto;
+    max-width: 80%; // Limitar ancho máximo para mantener centrado
     pointer-events: none;
-    font-family: 'VCR', monospace;
+    font-family: 'PromptFont', 'Dancing Script', cursive;
     font-size: clamp(1.4rem, 3vw, 2.2rem);
     line-height: 1.7;
     font-weight: normal;
@@ -94,17 +95,17 @@
     text-shadow: 0 2px 12px rgba(0, 0, 0, 0.7), 0 1px 3px rgba(0, 0, 0, 0.5), 0 0 0.5vw rgba(0, 255, 255, 0.8);
     letter-spacing: 0.05em;
     text-transform: none;
+    text-align: center; // Centrar el texto
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    opacity: 0; // Inicialmente oculto, se animará con GSAP
     
     @media (orientation: portrait) {
       font-size: clamp(1.3rem, 4.5vw, 2rem);
-      padding-left: 2vw;
       line-height: 1.8;
     }
     
     @media (orientation: landscape) {
-      padding-left: 1vw;
       font-size: clamp(1.5rem, 2.5vw, 2.4rem);
     }
   }

@@ -95,6 +95,7 @@ export const AudioProvider = ({ children, audioSrcs = [] }) => {
   const currentIndexRef = useRef(currentIndex); // Ref para currentIndex
   const isChangingFromEndedRef = useRef(false); // Flag para evitar interferencia del useEffect principal
   const iosPreloadAudioElementsRef = useRef([]); // Refs para elementos Audio de pre-carga en iOS
+  const seekToAudioRef = useRef(null); // Ref para seekToAudio para que handleEnded pueda usarlo
 
   // El audioRef que se expone es siempre el actual
   const audioRef = currentAudioRef;
@@ -477,129 +478,73 @@ export const AudioProvider = ({ children, audioSrcs = [] }) => {
       
       if (!srcs || srcs.length <= 1) {
         console.log('[AudioContext] Solo hay un audio, no cambiar');
+        // Disparar evento para que el componente padre maneje la salida
+        window.dispatchEvent(new CustomEvent('audioSegmentEnded', { 
+          detail: { 
+            currentIndex: idx, 
+            isLastAudio: true,
+            wasPlaying: true
+          } 
+        }));
         return;
       }
       
-      console.log(`[AudioContext] Cambiando de audio ${idx} a ${(idx + 1) % srcs.length}`);
+      // Verificar si es el último audio
+      const isLastAudio = idx === srcs.length - 1;
+      
+      if (isLastAudio) {
+        console.log('[AudioContext] Es el último audio, no cambiar automáticamente');
+        // Disparar evento para que el componente padre maneje la salida
+        window.dispatchEvent(new CustomEvent('audioSegmentEnded', { 
+          detail: { 
+            currentIndex: idx, 
+            isLastAudio: true,
+            wasPlaying: true
+          } 
+        }));
+        return;
+      }
+      
+      // No es el último audio, cambiar al siguiente usando seekToAudio
+      const nextIndex = idx + 1;
+      
+      console.log(`[AudioContext] Audio ${idx} terminó. Cambiando a índice ${nextIndex} usando seekToAudio`);
+      
+      // Disparar evento antes de cambiar para que los componentes puedan actualizar guiones, etc.
+      window.dispatchEvent(new CustomEvent('audioSegmentEnded', { 
+        detail: { 
+          currentIndex: idx, 
+          nextIndex: nextIndex,
+          isLastAudio: false,
+          wasPlaying: true
+        } 
+      }));
+      
+      // Usar seekToAudio para cambiar al siguiente audio (esto manejará el fade y todo correctamente)
+      // Buscar la función seekToAudio en el contexto
+      // Nota: seekToAudio está definida más abajo, así que usamos el evento para que SubfolderAudioController lo maneje
+      // O mejor, hacer fade out y luego llamar a seekToAudio directamente
       
       // Hacer fade out breve del actual
       if (fadeOutTweenRef.current) {
         fadeOutTweenRef.current.kill();
       }
       
-      fadeOutTweenRef.current = gsap.to(currentAudio, {
-        volume: 0,
-        duration: 0.3, // Fade out breve
-        ease: 'power2.in',
-        onComplete: () => {
-          // Cambiar al siguiente audio
-          const nextIndex = (idx + 1) % srcs.length;
-          const nextSrc = srcs[nextIndex];
-          
-          console.log(`[AudioContext] Audio ${idx} terminó. Cambiando a índice ${nextIndex} de ${srcs.length} audios`);
-          console.log(`[AudioContext] Src actual: ${currentAudio.src}`);
-          console.log(`[AudioContext] Src siguiente: ${nextSrc}`);
-          
-          // Marcar que estamos cambiando desde handleEnded para evitar interferencia
-          isChangingFromEndedRef.current = true;
-          
-          // Actualizar refs ANTES de cambiar el src para evitar que el useEffect principal interfiera
-          currentIndexRef.current = nextIndex;
-          audioSrcsRef.current = validAudioSrcs; // Asegurar que el ref esté actualizado
-          
-          // Cambiar el src del audio actual
-          // En iOS, desconectar el AudioContext antes de cambiar el src para evitar problemas
-          const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-          
-          if (isIOS && globalSourceNode) {
-            try {
-              console.log('[AudioContext] iOS: Desconectando AudioContext antes de cambiar src');
-              globalSourceNode.disconnect();
-              globalSourceNode = null;
-              connectedAudioElement = null;
-            } catch (e) {
-              console.warn('[AudioContext] Error desconectando AudioContext en iOS:', e);
-            }
-          }
-          
-          currentAudio.pause();
-          currentAudio.currentTime = 0; // Resetear el tiempo
-          const nextSrcString = typeof nextSrc === 'string' ? nextSrc : (nextSrc?.default || nextSrc);
-          
-          console.log(`[AudioContext] Estableciendo nuevo src: ${nextSrcString}`);
-          
-          // En iOS/Android Safari con múltiples audios, usar el siguiente elemento del array
-          if (useMultipleElements && audioElementsRef.current.length > 0) {
-            const nextAudio = audioElementsRef.current[nextIndex];
-            if (nextAudio) {
-              // Cambiar al siguiente elemento
-              currentAudioRef.current = nextAudio;
-              currentIndexRef.current = nextIndex;
-              
-              console.log(`[AudioContext] Cambiado a elemento Audio ${nextIndex} (iOS/Android Safari)`);
+        fadeOutTweenRef.current = gsap.to(currentAudio, {
+          volume: 0,
+          duration: 0.3, // Fade out breve
+          ease: 'power2.in',
+          onComplete: async () => {
+            // Llamar directamente a seekToAudio para cambiar al siguiente audio con fade
+            if (seekToAudioRef.current) {
+              console.log(`[AudioContext] handleEnded: Llamando a seekToAudio(${nextIndex}, 0) después del fade out`);
+              await seekToAudioRef.current(nextIndex, 0);
             } else {
-              // Fallback: cambiar src normalmente
-              currentAudio.src = nextSrcString;
-              currentAudio.load();
+              console.warn('[AudioContext] handleEnded: seekToAudioRef.current no está disponible, el evento debería manejarlo');
             }
-          } else {
-            // En otros casos, cambiar src normalmente
-            currentAudio.src = nextSrcString;
-            currentAudio.load();
+            fadeOutTweenRef.current = null;
           }
-          
-          // En iOS, el AudioContext se reconectará automáticamente en setupAudioContext cuando el audio esté listo
-          
-          // Usar setTimeout para asegurar que el cambio de estado no interfiera
-          setTimeout(() => {
-            setCurrentIndex(nextIndex);
-            // Resetear el flag después de un momento para permitir futuros cambios
-            setTimeout(() => {
-              isChangingFromEndedRef.current = false;
-              console.log('[AudioContext] Flag isChangingFromEndedRef reseteado');
-            }, 200);
-          }, 0);
-          
-          fadeOutTweenRef.current = null;
-          
-          // Esperar a que el nuevo audio esté listo y reproducir con fade in breve
-          // En iOS/Android Safari con múltiples elementos, el audio ya está pre-cargado
-          const tryPlay = async () => {
-            const audioToPlay = currentAudioRef.current;
-            if (!audioToPlay) {
-              setTimeout(tryPlay, 50);
-              return;
-            }
-            
-            // En iOS/Android Safari con múltiples elementos, el audio ya está pre-cargado
-            const minReadyState = (useMultipleElements && audioElementsRef.current.length > 0) ? 1 : 2;
-            
-            if (audioToPlay.readyState >= minReadyState) {
-              console.log('[AudioContext] Reproduciendo siguiente audio');
-              try {
-                await audioToPlay.play();
-                audioToPlay.volume = 0;
-                fadeInTweenRef.current = gsap.to(audioToPlay, {
-                  volume: 1,
-                  duration: 0.4, // Fade in breve
-                  ease: 'power2.out',
-                  onComplete: () => {
-                    fadeInTweenRef.current = null;
-                    setIsPlaying(true);
-                    console.log('[AudioContext] Siguiente audio reproduciéndose');
-                  }
-                });
-              } catch (playErr) {
-                console.warn('[AudioContext] Error playing next audio:', playErr);
-              }
-            } else {
-              setTimeout(tryPlay, 50);
-            }
-          };
-          
-          setTimeout(tryPlay, 50);
-        }
-      });
+        });
     };
 
     audio.addEventListener('ended', handleEnded);
@@ -1965,6 +1910,11 @@ export const AudioProvider = ({ children, audioSrcs = [] }) => {
     getTotalDuration,
     getTotalElapsed
   };
+
+  // Actualizar el ref de seekToAudio para que handleEnded pueda usarlo
+  useEffect(() => {
+    seekToAudioRef.current = seekToAudio;
+  }, [seekToAudio]);
 
   // Determinar si debemos renderizar múltiples elementos audio
   // Chrome iOS también necesita múltiples elementos cuando hay múltiples audios
