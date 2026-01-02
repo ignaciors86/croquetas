@@ -33,12 +33,44 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
         '#00FFFF', '#FF00FF', '#FFFFFF', '#FFB347', '#FFD700', '#C0C0C0',
       ];
       
-      const color1 = lgtbColors[colorIndexRef.current % lgtbColors.length];
-      const color2 = lgtbColors[(colorIndexRef.current + 1) % lgtbColors.length];
-      colorIndexRef.current++;
-      
       const intensity = data?.intensity ?? 0.5;
       const shouldHaveBackground = data?.shouldBeSolid ?? false;
+      
+      // Para cuadrados sin imagen, usar color sólido que reacciona a la música
+      // Si tiene datos de audio, calcular color basado en ellos
+      let borderColor = null;
+      let color1 = null;
+      let color2 = null;
+      
+      if (!shouldHaveBackground) {
+        // Cuadrados sin imagen: color sólido que reacciona a la música
+        // El color se calculará dinámicamente en updateColorFromMusic, pero establecemos un color inicial
+        // basado en los datos disponibles o un color por defecto que cambiará inmediatamente
+        if (data) {
+          const spectralCentroid = data?.spectralCentroid ?? 0;
+          const bassEnergy = data?.bassEnergy ?? 0;
+          const trebleEnergy = data?.trebleEnergy ?? 0;
+          const rhythmEnergy = data?.rhythmEnergy ?? 0;
+          
+          // Calcular color basado en las frecuencias del audio
+          // Usar spectralCentroid para el matiz (hue), y energía para saturación/brightness
+          const hue = (spectralCentroid * 360) % 360;
+          const saturation = Math.min(100, 50 + (bassEnergy + trebleEnergy) * 50);
+          const lightness = Math.min(90, 40 + (rhythmEnergy + intensity) * 30);
+          
+          borderColor = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+        } else {
+          // Si no hay datos aún, usar un color inicial basado en tiempo que cambiará cuando se actualice
+          // Usar un color basado en tiempo para que al menos varíe y no sea siempre verde
+          const timeBasedHue = (Date.now() / 100) % 360;
+          borderColor = `hsl(${Math.round(timeBasedHue)}, 70%, 60%)`;
+        }
+      } else {
+        // Para cuadrados con imagen, mantener el gradiente
+        color1 = lgtbColors[colorIndexRef.current % lgtbColors.length];
+        color2 = lgtbColors[(colorIndexRef.current + 1) % lgtbColors.length];
+        colorIndexRef.current++;
+      }
       
       // Solo obtener imagen si está lista (pre-cargada)
       let imageUrl = null;
@@ -172,11 +204,12 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
         imagePosition: imagePosition,
         imageRotation: imageRotation,
         isLastImage: isLastImage, // Marcar si es la última imagen
-        gradient: {
+        gradient: shouldHaveBackground && color1 && color2 ? {
           color1: color1,
           color2: color2,
           angle: Math.floor(Math.random() * 360)
-        }
+        } : null,
+        borderColor: !shouldHaveBackground ? borderColor : null
       };
       
       setSquares(prev => {
@@ -387,11 +420,74 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
             });
             }
           } else {
+            // Cuadrados sin imagen: animación con color que reacciona a la música
             const targetScale = 0.85;
-            const scale1 = 1.0;
-            const scaleProgressTo1 = 1.0 / targetScale;
-            const fadeStartProgress = 0.6; // Ajustado: un poco más lento que 0.5 pero más rápido que 0.7
+            const fadeStartProgress = 0.6;
             const fadeEndProgress = 1.0;
+            
+            // Función para actualizar el color basado en la música
+            const updateColorFromMusic = () => {
+              if (!dataArrayRef?.current || !analyserRef?.current) {
+                // Si no hay analizador aún, usar color basado en tiempo para que al menos cambie
+                const timeBasedHue = (Date.now() / 100) % 360;
+                const defaultColor = `hsl(${Math.round(timeBasedHue)}, 70%, 60%)`;
+                el.style.setProperty('--square-border-color', defaultColor);
+                return;
+              }
+              
+              try {
+                const dataArray = dataArrayRef.current;
+                const analyser = analyserRef.current;
+                
+                analyser.getByteFrequencyData(dataArray);
+                
+                // Calcular métricas de audio
+                let sum = 0;
+                let bassSum = 0;
+                let trebleSum = 0;
+                const bassRange = Math.floor(dataArray.length * 0.1); // Primeros 10%
+                const trebleRange = Math.floor(dataArray.length * 0.8); // Últimos 20%
+                
+                for (let i = 0; i < dataArray.length; i++) {
+                  const normalized = dataArray[i] / 255;
+                  sum += normalized;
+                  if (i < bassRange) bassSum += normalized;
+                  if (i > trebleRange) trebleSum += normalized;
+                }
+                
+                const average = sum / dataArray.length;
+                const bassEnergy = bassRange > 0 ? bassSum / bassRange : 0;
+                const trebleEnergy = (dataArray.length - trebleRange) > 0 ? trebleSum / (dataArray.length - trebleRange) : 0;
+                
+                // Calcular spectral centroid aproximado
+                let weightedSum = 0;
+                let magnitudeSum = 0;
+                for (let i = 0; i < dataArray.length; i++) {
+                  const magnitude = dataArray[i] / 255;
+                  weightedSum += i * magnitude;
+                  magnitudeSum += magnitude;
+                }
+                const spectralCentroid = magnitudeSum > 0 ? weightedSum / magnitudeSum / dataArray.length : 0;
+                
+                // Calcular color basado en la música
+                // Asegurar que el hue cambie dinámicamente basado en el spectral centroid
+                const hue = (spectralCentroid * 360) % 360;
+                const saturation = Math.min(100, Math.max(50, 50 + (bassEnergy + trebleEnergy) * 50));
+                const lightness = Math.min(90, Math.max(40, 40 + (average + intensity) * 30));
+                
+                const newColor = `hsl(${Math.round(hue)}, ${Math.round(saturation)}%, ${Math.round(lightness)}%)`;
+                el.style.setProperty('--square-border-color', newColor);
+              } catch (error) {
+                // Si hay error, usar color basado en tiempo para que al menos cambie
+                const timeBasedHue = (Date.now() / 100) % 360;
+                const fallbackColor = `hsl(${Math.round(timeBasedHue)}, 70%, 60%)`;
+                el.style.setProperty('--square-border-color', fallbackColor);
+              }
+            };
+            
+            // Throttle para actualizaciones de color (cada 3 frames = ~50ms a 60fps)
+            let frameCount = 0;
+            const colorUpdateInterval = 3;
             
             timeline.fromTo(el, 
               { 
@@ -409,15 +505,47 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
                 onUpdate: function() {
                   const progress = this.progress();
                   
+                  // Actualizar color basado en la música (throttled)
+                  // IMPORTANTE: Actualizar siempre, no solo cada N frames, para que el color cambie suavemente
+                  frameCount++;
+                  if (frameCount % colorUpdateInterval === 0 || frameCount === 1) {
+                    // Siempre actualizar en el primer frame y luego cada N frames
+                    updateColorFromMusic();
+                  }
+                  
+                  // Calcular tamaño relativo a la ventana para ajustar opacidad
+                  const rect = el.getBoundingClientRect();
+                  const viewportWidth = window.innerWidth;
+                  const viewportHeight = window.innerHeight;
+                  const elementWidth = rect.width;
+                  const elementHeight = rect.height;
+                  
+                  // Calcular qué porcentaje del viewport ocupa el elemento
+                  const widthRatio = elementWidth / viewportWidth;
+                  const heightRatio = elementHeight / viewportHeight;
+                  const maxRatio = Math.max(widthRatio, heightRatio);
+                  
+                  // Si el elemento ocupa más del 70% del viewport, empezar a reducir opacidad
+                  // Opacidad base: 0.5, se reduce hasta 0 cuando alcanza 100% del viewport
+                  let sizeBasedOpacity = 0.5;
+                  if (maxRatio > 0.7) {
+                    const fadeStart = 0.7;
+                    const fadeEnd = 1.0;
+                    const fadeProgress = (maxRatio - fadeStart) / (fadeEnd - fadeStart);
+                    sizeBasedOpacity = 0.5 * (1 - Math.min(1, fadeProgress));
+                  }
+                  
+                  // Aplicar fade out normal si está en esa fase
+                  let finalOpacity = sizeBasedOpacity;
                   if (progress >= fadeStartProgress) {
                     const fadeProgress = (progress - fadeStartProgress) / (fadeEndProgress - fadeStartProgress);
-                    const newOpacity = 1 - fadeProgress;
-                    gsap.set(el, { opacity: Math.max(0, newOpacity) });
+                    const fadeOutOpacity = 1 - fadeProgress;
+                    finalOpacity = Math.min(sizeBasedOpacity, fadeOutOpacity);
                   }
+                  
+                  gsap.set(el, { opacity: Math.max(0, finalOpacity) });
                 },
                 onComplete: () => {
-                  // Esperar más tiempo antes de limpiar para asegurar que el fade termine completamente
-                  // El fade ya terminó en progress 1.0, pero añadimos un pequeño delay extra
                   setTimeout(cleanupSquare, 200);
                 }
               }
@@ -562,21 +690,30 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
       {/* Blur overlay permanente sobre las diagonales - backdrop-filter difumina lo que está detrás */}
       <div className={`${MAINCLASS}__blurOverlay`} />
       {!showOnlyDiagonales && squares.map(square => {
-        const color1 = square.gradient?.color1 || '#00ffff';
-        const color2 = square.gradient?.color2 || '#00ffff';
-        const angle = square.gradient?.angle || 45;
+        const isTarget = square.isTarget;
+        const style = {};
+        
+        if (isTarget) {
+          // Cuadrados con imagen: usar gradiente
+          const color1 = square.gradient?.color1 || '#00ffff';
+          const color2 = square.gradient?.color2 || '#00ffff';
+          const angle = square.gradient?.angle || 45;
+          style['--square-color-1'] = color1;
+          style['--square-color-2'] = color2;
+          style['--square-gradient-angle'] = `${angle}deg`;
+        } else {
+          // Cuadrados sin imagen: usar color sólido inicial (se actualizará dinámicamente)
+          const borderColor = square.borderColor || square.data?.borderColor || '#00ffff';
+          style['--square-border-color'] = borderColor;
+        }
         
         return (
           <div
             key={square.id}
             ref={el => squareRefs.current[square.id] = el}
-            className={`${MAINCLASS}__square ${square.isTarget ? `${MAINCLASS}__square--target` : ''}`}
+            className={`${MAINCLASS}__square ${isTarget ? `${MAINCLASS}__square--target` : ''}`}
             data-square-id={square.id}
-            style={{ 
-              '--square-color-1': color1,
-              '--square-color-2': color2,
-              '--square-gradient-angle': `${angle}deg`
-            }}
+            style={style}
           >
             {square.isTarget && square.imageUrl && (
               <img 

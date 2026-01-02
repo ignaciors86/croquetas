@@ -55,7 +55,7 @@ const Croquetas25 = () => {
   }, []);
   
   const [trackIdFromUrl, setTrackIdFromUrl] = useState(() => getTrackIdFromUrl());
-  const isSelectingTrackRef = useRef(false); // Ref para evitar selecciones múltiples
+  const [isSelectingTrack, setIsSelectingTrack] = useState(false); // Estado para evitar selecciones múltiples
   const lastSelectedTrackIdRef = useRef(null); // Ref para rastrear el último track seleccionado
   
   // Detectar cambios en la URL (para cuando el usuario navega manualmente o usa botón atrás)
@@ -87,7 +87,7 @@ const Croquetas25 = () => {
     const runId = effectRunCountRef.current;
     
     // Evitar ejecuciones múltiples - verificar ANTES de cualquier otra cosa
-    if (isSelectingTrackRef.current) {
+    if (isSelectingTrack) {
       console.log(`[Croquetas25] useEffect auto-select [${runId}]: Ya hay una selección en curso, ignorando`);
       // Sincronizar el ref para evitar que se ejecute de nuevo
       lastTrackIdFromUrlRef.current = trackIdFromUrl;
@@ -143,7 +143,7 @@ const Croquetas25 = () => {
       // Marcar como procesado ANTES de hacer cambios
       processedTrackIdRef.current = trackIdFromUrl;
       lastTrackIdFromUrlRef.current = trackIdFromUrl;
-      isSelectingTrackRef.current = true;
+      setIsSelectingTrack(true);
       lastSelectedTrackIdRef.current = foundTrackId;
       
       // Hacer fade-out del Intro si está visible
@@ -163,11 +163,6 @@ const Croquetas25 = () => {
       setAudioStarted(false);
       setShowStartButton(false);
       setLoadingFadedOut(false);
-      
-      // Resetear el flag después de un delay más largo para evitar ejecuciones múltiples
-      setTimeout(() => {
-        isSelectingTrackRef.current = false;
-      }, 500);
     } else if (!trackIdFromUrl && lastTrackIdFromUrlRef.current !== null) {
       // Solo limpiar si realmente no hay trackId en la URL y había uno antes
       console.log(`[Croquetas25] useEffect auto-select [${runId}]: Limpiando selección (no hay trackId)`);
@@ -182,7 +177,7 @@ const Croquetas25 = () => {
           onComplete: () => {
             processedTrackIdRef.current = null;
             lastTrackIdFromUrlRef.current = null;
-            isSelectingTrackRef.current = true;
+            setIsSelectingTrack(true);
             lastSelectedTrackIdRef.current = null;
             
             setSelectedTrack(null);
@@ -190,8 +185,8 @@ const Croquetas25 = () => {
             setShowStartButton(false);
             setLoadingFadedOut(false);
             
-            // Fade-in después de limpiar
-            setTimeout(() => {
+            // Fade-in después de limpiar (usar requestAnimationFrame en lugar de setTimeout)
+            requestAnimationFrame(() => {
               if (contentContainer) {
                 gsap.fromTo(contentContainer, 
                   { opacity: 0 },
@@ -202,11 +197,7 @@ const Croquetas25 = () => {
                   }
                 );
               }
-            }, 100);
-            
-            setTimeout(() => {
-              isSelectingTrackRef.current = false;
-            }, 500);
+            });
           }
         });
       } else {
@@ -259,29 +250,68 @@ const Croquetas25 = () => {
   // Ref para el callback de completado que puede pausar el audio
   const handleAllCompleteRef = useRef(null);
   
-  // Callback para cuando se completa toda la colección - volver a Intro con fade
-  const handleAllComplete = useCallback(async () => {
-    console.log('[Croquetas25] Todas las subcarpetas completadas, volviendo a Intro');
+  // Función de salida de croquetas que anima correctamente todos los elementos
+  const exitCroqueta = useCallback(async () => {
+    console.log('[Croquetas25] Iniciando salida de croqueta con animaciones');
+    console.log('[exitCroqueta] URL actual antes de cambiar:', typeof window !== 'undefined' ? window.location.pathname : 'N/A');
     
-    // Primero hacer fade-out del contenido actual
+    // Crear timeline maestro para todas las animaciones
+    const exitTimeline = gsap.timeline();
+    
+    // 1. Fade out de elementos UI (Seek, Prompt, BackButton)
+    const seekElement = document.querySelector('.seek');
+    const promptElement = document.querySelector('.prompt');
+    const backButtonElement = document.querySelector('.backButton');
+    
+    if (seekElement) {
+      exitTimeline.to(seekElement, {
+        opacity: 0,
+        y: 20,
+        duration: 0.6,
+        ease: 'power2.in'
+      }, 0);
+    }
+    
+    if (promptElement) {
+      exitTimeline.to(promptElement, {
+        opacity: 0,
+        y: 50,
+        duration: 0.6,
+        ease: 'power2.in'
+      }, 0);
+    }
+    
+    if (backButtonElement) {
+      exitTimeline.to(backButtonElement, {
+        opacity: 0,
+        scale: 0,
+        duration: 0.6,
+        ease: 'power2.in'
+      }, 0);
+    }
+    
+    // 2. Fade out del contenido principal (Background, imágenes, etc.)
     const contentContainer = document.querySelector('.croquetas25');
     if (contentContainer) {
-      await new Promise(resolve => {
-        gsap.to(contentContainer, {
-          opacity: 0,
-          duration: 0.8,
-          ease: 'power2.in',
-          onComplete: resolve
-        });
-      });
+      exitTimeline.to(contentContainer, {
+        opacity: 0,
+        duration: 0.8,
+        ease: 'power2.in'
+      }, 0.2);
     }
     
-    // Pausar el audio si está disponible
+    // 3. Fade out del audio (si está disponible)
     if (handleAllCompleteRef.current) {
-      await handleAllCompleteRef.current();
+      exitTimeline.call(async () => {
+        await handleAllCompleteRef.current();
+      }, null, 0.4);
     }
     
-    // Luego detener todo y volver a la home (sin navegación real)
+    // Esperar a que todas las animaciones terminen
+    await exitTimeline;
+    
+    // 4. Limpiar estados y volver a la home
+    // IMPORTANTE: Resetear todo el estado para evitar que se reinicie la croqueta
     setAudioStarted(false);
     setSelectedTrack(null);
     setShowStartButton(false);
@@ -293,14 +323,52 @@ const Croquetas25 = () => {
     lastSelectedTrackIdRef.current = null;
     isSelectingTrackRef.current = false;
     
+    // Limpiar callbacks para evitar que se activen después
+    if (triggerCallbackRef.current) {
+      triggerCallbackRef.current = null;
+    }
+    if (voiceCallbackRef.current) {
+      voiceCallbackRef.current = null;
+    }
+    
+    // IMPORTANTE: Resetear refs ANTES de cambiar la URL para evitar auto-selección
+    processedTrackIdRef.current = null;
+    lastTrackIdFromUrlRef.current = null;
+    lastSelectedTrackIdRef.current = null;
+    isSelectingTrackRef.current = false;
+    
     // Falsificar URL sin navegar realmente
     if (typeof window !== 'undefined') {
       const basePath = '/nachitos-de-nochevieja';
-      window.history.pushState({ trackId: null }, '', basePath);
+      const currentPath = window.location.pathname;
+      console.log('[exitCroqueta] URL actual antes de cambiar:', currentPath);
+      
+      // IMPORTANTE: Usar replaceState en lugar de pushState para reemplazar la entrada actual
+      // y asegurarnos de que la URL cambie correctamente
+      window.history.replaceState({ trackId: null }, '', basePath);
+      
+      // Forzar actualización del pathname leyendo la nueva URL
+      // A veces window.location.pathname no se actualiza inmediatamente, así que forzamos la lectura
+      const newPathname = window.location.pathname;
+      console.log('[exitCroqueta] Nueva URL después de replaceState:', newPathname);
+      
+      // Resetear trackIdFromUrl directamente a null ya que sabemos que la URL base no tiene trackId
+      // Esto evita problemas con getTrackIdFromUrl que puede no detectar el cambio inmediatamente
+      console.log('[exitCroqueta] Reseteando trackIdFromUrl a null');
       setTrackIdFromUrl(null);
+      
+      // Verificar que la URL realmente cambió
+      setTimeout(() => {
+        const verifyPath = window.location.pathname;
+        console.log('[exitCroqueta] Verificación de URL después de 100ms:', verifyPath);
+        if (verifyPath !== basePath) {
+          console.warn('[exitCroqueta] La URL no cambió correctamente, forzando cambio');
+          window.history.replaceState({ trackId: null }, '', basePath);
+        }
+      }, 100);
     }
     
-    // Fade-in del contenido después de un breve delay
+    // 5. Fade-in del contenido después de un breve delay
     setTimeout(() => {
       if (contentContainer) {
         gsap.fromTo(contentContainer, 
@@ -314,6 +382,12 @@ const Croquetas25 = () => {
       }
     }, 100);
   }, []);
+  
+  // Callback para cuando se completa toda la colección - volver a Intro con fade
+  const handleAllComplete = useCallback(async () => {
+    console.log('[Croquetas25] Todas las subcarpetas completadas, volviendo a Intro');
+    await exitCroqueta();
+  }, [exitCroqueta]);
   
   // Componente que maneja el completado dentro de AudioProvider para poder pausar el audio
   const AllCompleteHandler = () => {
@@ -347,6 +421,14 @@ const Croquetas25 = () => {
   
   const isDirectUri = !!trackIdFromUrl;
   
+  // Resetear isSelectingTrack cuando selectedTrack cambia (después de que se complete la selección)
+  useEffect(() => {
+    if (selectedTrack && isSelectingTrack) {
+      // El track se ha seleccionado correctamente, resetear el flag
+      setIsSelectingTrack(false);
+    }
+  }, [selectedTrack, isSelectingTrack]);
+  
   // Logging para debug en producción
   useEffect(() => {
     if (selectedTrack && audioSrcs.length > 0) {
@@ -360,7 +442,7 @@ const Croquetas25 = () => {
 
   const handleTrackSelect = useCallback(async (track) => {
     // Evitar selecciones múltiples
-    if (isSelectingTrackRef.current) {
+    if (isSelectingTrack) {
       console.log('[Croquetas25] handleTrackSelect: Ya hay una selección en curso, ignorando');
       return;
     }
@@ -383,7 +465,7 @@ const Croquetas25 = () => {
     
     // Marcar como procesado ANTES de cualquier actualización de estado
     processedTrackIdRef.current = trackIdForUrl;
-    isSelectingTrackRef.current = true;
+    setIsSelectingTrack(true);
     lastSelectedTrackIdRef.current = trackIdForUrl;
     lastTrackIdFromUrlRef.current = trackIdForUrl; // Sincronizar ANTES de actualizar estado
     
@@ -417,13 +499,8 @@ const Croquetas25 = () => {
     
     // NO actualizar trackIdFromUrl aquí para evitar que el efecto automático se ejecute
     // El efecto automático solo debe ejecutarse cuando cambia la URL manualmente (popstate)
-    
-    // Resetear el flag después de un delay más largo para evitar ejecuciones múltiples
-    setTimeout(() => {
-      isSelectingTrackRef.current = false;
-      console.log('[Croquetas25] handleTrackSelect: Flag reseteado');
-    }, 500);
-  }, [selectedTrack]);
+    // El estado isSelectingTrack se reseteará automáticamente cuando selectedTrack cambie (ver efecto más abajo)
+  }, [selectedTrack, isSelectingTrack]);
 
   const handleClick = async (e) => {
     if (!audioStarted && selectedTrack && showStartButton && startButtonRef.current) {
@@ -700,6 +777,7 @@ const Croquetas25 = () => {
             handleClick={handleClick}
             selectedTrack={selectedTrack}
             loadingFadedOut={loadingFadedOut}
+            isSelectingTrack={isSelectingTrack}
           />
           {/* Capa 4: Handlers y componentes funcionales */}
           <AudioStarter audioStarted={audioStarted} />
@@ -716,7 +794,10 @@ const Croquetas25 = () => {
             <>
               <SeekWrapper />
               {audioStarted && selectedTrack && (
-                <SubfolderAudioController selectedTrack={selectedTrack} />
+                <>
+                  <SubfolderAudioController selectedTrack={selectedTrack} />
+                  <AudioEndMonitor selectedTrack={selectedTrack} onExit={exitCroqueta} />
+                </>
               )}
               {audioStarted && (
                 <GuionManager 
@@ -727,18 +808,7 @@ const Croquetas25 = () => {
               )}
               {(isDirectUri || audioStarted) && (
                 <BackButton 
-                  onBack={() => {
-                    setAudioStarted(false);
-                    setSelectedTrack(null);
-                    setShowStartButton(false);
-                    setLoadingFadedOut(false);
-                    // Falsificar URL sin navegar realmente
-                    if (typeof window !== 'undefined') {
-                      const basePath = '/nachitos-de-nochevieja';
-                      window.history.pushState({ trackId: null }, '', basePath);
-                      setTrackIdFromUrl(null);
-                    }
-                  }}
+                  onBack={exitCroqueta}
                 />
               )}
             </>
@@ -1157,7 +1227,8 @@ const UnifiedContentManager = ({
   startButtonRef,
   handleClick,
   selectedTrack,
-  loadingFadedOut
+  loadingFadedOut,
+  isSelectingTrack
 }) => {
   const { isLoaded, audioRef, audioContextRef } = useAudio();
   const buttonRef = useRef(null);
@@ -1215,7 +1286,8 @@ const UnifiedContentManager = ({
       }
       
       // Solo intentar iniciar si no se ha intentado ya y audio no está iniciado
-      if (!audioStarted && !audioStartAttemptedRef.current && everythingReady && loadingFadedOut) {
+      // IMPORTANTE: Verificar que no estemos en medio de una selección de track
+      if (!audioStarted && !audioStartAttemptedRef.current && everythingReady && loadingFadedOut && !isSelectingTrack) {
         audioStartAttemptedRef.current = true;
         console.log('[UnifiedContentManager] Iniciando audio automáticamente');
         
@@ -1251,7 +1323,7 @@ const UnifiedContentManager = ({
         }
       }
     }
-  }, [everythingReady, loadingFadedOut, isDirectUri, showStartButton, audioStarted, setShowStartButton, setAudioStarted, audioContextRef]);
+  }, [everythingReady, loadingFadedOut, isDirectUri, showStartButton, audioStarted, setShowStartButton, setAudioStarted, audioContextRef, isSelectingTrack]);
   
   // Resetear el ref cuando cambia el track seleccionado
   useEffect(() => {
@@ -1426,6 +1498,78 @@ const SubfolderAudioController = ({ selectedTrack }) => {
   return null;
 };
 
+// Componente para monitorear el final del audio y activar salida 2 segundos antes
+const AudioEndMonitor = ({ selectedTrack, onExit }) => {
+  const { audioRef, currentIndex, isPlaying } = useAudio();
+  const exitTriggeredRef = useRef(false);
+  const lastAudioIndexRef = useRef(null);
+  
+  useEffect(() => {
+    // Resetear cuando cambia el track
+    exitTriggeredRef.current = false;
+    lastAudioIndexRef.current = null;
+  }, [selectedTrack?.id]);
+  
+  useEffect(() => {
+    if (!audioRef?.current || !selectedTrack || !isPlaying || exitTriggeredRef.current) return;
+    
+    const audio = audioRef.current;
+    const audioSrcs = selectedTrack.srcs || [];
+    const audioMetadata = selectedTrack.audioMetadata || [];
+    
+    // Determinar si es el último audio
+    const isLastAudio = currentIndex === audioSrcs.length - 1 || audioSrcs.length === 1;
+    
+    if (!isLastAudio) {
+      // Si no es el último audio, resetear el flag cuando cambia el índice
+      if (lastAudioIndexRef.current !== null && lastAudioIndexRef.current !== currentIndex) {
+        exitTriggeredRef.current = false;
+      }
+      lastAudioIndexRef.current = currentIndex;
+      return;
+    }
+    
+    lastAudioIndexRef.current = currentIndex;
+    
+    const checkTime = () => {
+      if (!audio || !audio.duration || exitTriggeredRef.current) return;
+      
+      // Obtener duración del segmento actual (con metadata si está disponible)
+      const metadata = audioMetadata[currentIndex];
+      let segmentDuration = audio.duration;
+      let currentTimeInSegment = audio.currentTime;
+      
+      if (metadata && metadata.start !== null && metadata.end !== null) {
+        segmentDuration = metadata.end - metadata.start;
+        currentTimeInSegment = audio.currentTime - metadata.start;
+      }
+      
+      // Calcular tiempo restante
+      const timeRemaining = segmentDuration - currentTimeInSegment;
+      
+      // Si quedan 2 segundos o menos, activar salida
+      if (timeRemaining <= 2 && timeRemaining > 0) {
+        exitTriggeredRef.current = true;
+        console.log('[AudioEndMonitor] Quedan 2 segundos o menos, activando salida');
+        onExit();
+      }
+    };
+    
+    const handleTimeUpdate = () => checkTime();
+    
+    audio.addEventListener('timeupdate', handleTimeUpdate);
+    
+    // Verificar inmediatamente
+    checkTime();
+    
+    return () => {
+      audio.removeEventListener('timeupdate', handleTimeUpdate);
+    };
+  }, [audioRef, selectedTrack, currentIndex, isPlaying, onExit]);
+  
+  return null;
+};
+
 const GuionManager = ({ selectedTrack, typewriterInstanceRef, isPausedByHold }) => {
   const [currentSubfolder, setCurrentSubfolder] = useState(null);
   const { currentIndex } = useAudio();
@@ -1488,13 +1632,14 @@ const GuionManager = ({ selectedTrack, typewriterInstanceRef, isPausedByHold }) 
     <PromptWrapper 
       textos={currentGuion.textos} 
       typewriterInstanceRef={typewriterInstanceRef} 
-      isPausedByHold={isPausedByHold} 
+      isPausedByHold={isPausedByHold}
+      selectedTrack={selectedTrack}
     />
   );
 };
 
-const PromptWrapper = ({ textos, typewriterInstanceRef, isPausedByHold }) => {
-  const { audioRef, analyserRef } = useAudio();
+const PromptWrapper = ({ textos, typewriterInstanceRef, isPausedByHold, selectedTrack }) => {
+  const { audioRef, analyserRef, currentIndex } = useAudio();
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   
@@ -1502,21 +1647,66 @@ const PromptWrapper = ({ textos, typewriterInstanceRef, isPausedByHold }) => {
     if (!audioRef?.current) return;
     
     const audio = audioRef.current;
+    let animationFrameId = null;
+    let lastUpdateTime = 0;
+    
     const updateTime = () => {
-      setCurrentTime(audio.currentTime);
-      if (audio.duration) setDuration(audio.duration);
+      const now = Date.now();
+      // Limitar actualizaciones a 60fps (cada ~16ms) para suavidad
+      if (now - lastUpdateTime < 16) {
+        animationFrameId = requestAnimationFrame(updateTime);
+        return;
+      }
+      lastUpdateTime = now;
+      
+      // Obtener metadata del audio actual si existe
+      const audioMetadata = selectedTrack?.audioMetadata?.[currentIndex];
+      
+      if (audioMetadata && audioMetadata.start !== null && audioMetadata.end !== null) {
+        // Calcular tiempo relativo al segmento (desde start hasta end)
+        const relativeTime = audio.currentTime - audioMetadata.start;
+        const segmentDuration = audioMetadata.end - audioMetadata.start;
+        setCurrentTime(Math.max(0, Math.min(relativeTime, segmentDuration)));
+        setDuration(segmentDuration);
+      } else {
+        // Sin metadata, usar tiempo absoluto
+        setCurrentTime(audio.currentTime);
+        if (audio.duration) setDuration(audio.duration);
+      }
+      
+      // Continuar animación
+      animationFrameId = requestAnimationFrame(updateTime);
     };
     
-    audio.addEventListener('timeupdate', updateTime);
+    // Usar timeupdate para sincronización con el audio
+    const handleTimeUpdate = () => {
+      // El requestAnimationFrame ya está corriendo, no hacer nada extra
+    };
+    
+    audio.addEventListener('timeupdate', handleTimeUpdate);
     audio.addEventListener('loadedmetadata', () => {
-      if (audio.duration) setDuration(audio.duration);
+      const audioMetadata = selectedTrack?.audioMetadata?.[currentIndex];
+      if (audioMetadata && audioMetadata.start !== null && audioMetadata.end !== null) {
+        setDuration(audioMetadata.end - audioMetadata.start);
+      } else if (audio.duration) {
+        setDuration(audio.duration);
+      }
     });
     
+    // Iniciar animación continua para suavidad (60fps)
+    animationFrameId = requestAnimationFrame(updateTime);
+    
+    // Actualizar inmediatamente
+    updateTime();
+    
     return () => {
-      audio.removeEventListener('timeupdate', updateTime);
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+      }
+      audio.removeEventListener('timeupdate', handleTimeUpdate);
       audio.removeEventListener('loadedmetadata', () => {});
     };
-  }, [audioRef]);
+  }, [audioRef, selectedTrack, currentIndex]);
   
   return (
     <Prompt 

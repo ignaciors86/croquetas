@@ -1,3 +1,19 @@
+@font-face {
+  font-family: 'VCR';
+  font-style: normal;
+  font-weight: normal;
+  font-display: swap;
+  src: 
+    url('/fonts/VCR/VCR_OSD_MONO-BACJ7AJA.woff2') format('woff2'),
+    url('/fonts/VCR/VCR_OSD_MONO-QFKAOLIE.woff') format('woff'),
+    url('/fonts/VCR/VCR_OSD_MONO-ID47EYT3.ttf') format('truetype');
+}
+
+/* Asegurar que la fuente VCR se aplique globalmente donde se especifique */
+* {
+  font-family: inherit;
+}
+
 * {
   box-sizing: border-box;
   padding: 0;

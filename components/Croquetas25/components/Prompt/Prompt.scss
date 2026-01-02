@@ -1,49 +1,38 @@
 .prompt {
-  position: absolute;
+  position: fixed;
   bottom: 0;
   left: 0;
+  width: 100%;
   pointer-events: none;
   cursor: unset;
-  height: auto;
   display: flex;
   flex-direction: row;
   align-items: center;
   justify-content: flex-start;
   gap: 2%;
   z-index: 300;
-  background: rgba(0, 0, 0, 0.85);
+  background: rgba(0, 0, 0, 0.5) !important;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   opacity: 0;
+  transform: translateY(50px);
   box-sizing: border-box;
-  border: 4px solid #00ffff;
-  border-radius: 0.5vw;
+  border-top: 2px solid rgba(0, 255, 255, 0.6);
   will-change: opacity, transform;
   user-select: none;
   -webkit-user-select: none;
   -moz-user-select: none;
   -ms-user-select: none;
-
-  @media (orientation: portrait) {
-    width: 90%;
-    padding: 5% 5% 5% 10%;
-    left: 5%;
-    bottom: 4%;
-  }
-
-  @media (orientation: landscape) {
-    padding: 2.5%;
-    width: 60%;
-    left: 20%;
-    bottom: 10%;
-  }
+  padding: 2.5vh 3vw;
+  min-height: 12vh;
 
   &__kitt {
-    position: absolute;
-    left: 2.5%;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 10%;
-    height: 12dvh;
-    min-height: 8dvh;
+    position: relative;
+    flex-shrink: 0;
+    width: 8vw;
+    height: 8vh;
+    min-width: 60px;
+    min-height: 60px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -52,14 +41,14 @@
     box-sizing: border-box;
     
     @media (orientation: portrait) {
-      left: 8.3%;
+      width: 12vw;
+      height: 10vh;
     }
 
     .kitt {
       position: relative !important;
-      width: 40% !important;
-      height: 12dvh !important;
-      min-height: 8dvh !important;
+      width: 100% !important;
+      height: 100% !important;
       inset: unset !important;
       display: flex;
       align-items: center;
@@ -73,19 +62,16 @@
 
       &__canvas {
         position: relative !important;
-        width: 50px !important;
-        height: 8dvh !important;
-        min-height: 8dvh !important;
-        max-height: 8dvh !important;
+        width: 100% !important;
+        height: 100% !important;
         inset: unset !important;
-        max-width: 50px;
+        max-width: 100%;
         background-color: transparent;
         box-sizing: border-box;
 
         canvas {
-          width: 50px !important;
-          height: 8dvh !important;
-          min-height: 8dvh !important;
+          width: 100% !important;
+          height: 100% !important;
           display: block;
           box-sizing: border-box;
         }
@@ -93,49 +79,48 @@
     }
   }
 
-  &__placeholder {
+  &__text {
     position: relative;
     flex: 1;
     width: auto;
     pointer-events: none;
-
+    font-family: 'VCR', monospace;
+    font-size: clamp(1.4rem, 3vw, 2.2rem);
+    line-height: 1.7;
+    font-weight: normal;
+    color: rgba(255, 255, 255, 0.98);
+    text-shadow: 0 2px 12px rgba(0, 0, 0, 0.7), 0 1px 3px rgba(0, 0, 0, 0.5), 0 0 0.5vw rgba(0, 255, 255, 0.8);
+    letter-spacing: 0.05em;
+    text-transform: none;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    
     @media (orientation: portrait) {
-      padding-left: 15vw;
+      font-size: clamp(1.3rem, 4.5vw, 2rem);
+      padding-left: 2vw;
+      line-height: 1.8;
     }
     
     @media (orientation: landscape) {
-      padding-left: 6vw;
+      padding-left: 1vw;
+      font-size: clamp(1.5rem, 2.5vw, 2.4rem);
     }
+  }
 
-    span {
-      font-size: 4.5dvh;
-      line-height: 5.5dvh;
-      font-weight: 700;
-      font-family: 'VCR', monospace;
-      color: #00ffff;
-      text-shadow: 0 0 1rem rgba(0, 255, 255, 0.8);
-    }
-
-    .Typewriter__wrapper {
-      color: #00ffff;
-      font-family: 'VCR', monospace;
-      font-size: 4.5dvh;
-      line-height: 5.5dvh;
-      font-weight: 700;
-      text-shadow: 0 0 1rem rgba(0, 255, 255, 0.8);
-    }
-
-    .Typewriter__cursor {
-      color: #00ffff;
-      font-size: 4.5dvh;
-      line-height: 5.5dvh;
-      text-shadow: 0 0 1rem rgba(0, 255, 255, 0.8);
-    }
+  &__cursor {
+    display: inline-block;
+    animation: blink 1s infinite;
+    color: rgba(0, 255, 255, 0.8);
+    margin-left: 2px;
+    font-weight: 300;
   }
 }
 
 @keyframes blink {
-  to {
-    visibility: hidden;
+  0%, 50% {
+    opacity: 1;
+  }
+  51%, 100% {
+    opacity: 0;
   }
 }

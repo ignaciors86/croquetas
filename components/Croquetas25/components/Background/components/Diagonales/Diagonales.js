@@ -339,11 +339,26 @@ const Diagonales = ({ squares, analyserRef, dataArrayRef, isInitialized, onVoice
       return;
     }
 
+    // Throttle para actualizaciones de color (cada 2 frames = ~33ms a 60fps)
+    let frameCount = 0;
+    const colorUpdateInterval = 2;
+    let lastColorUpdate = 0;
+    let cachedColors = { color1: '#00ffff', color2: '#00ffff' };
+    
     const animate = () => {
-      const lastSquare = squares.length > 0 ? squares[squares.length - 1] : null;
-      const currentColor = lastSquare?.gradient?.color1 || '#00ffff';
-      const currentColor2 = lastSquare?.gradient?.color2 || currentColor;
       const now = Date.now();
+      frameCount++;
+      
+      // Actualizar colores solo cada N frames para mejor performance
+      if (frameCount % colorUpdateInterval === 0 || now - lastColorUpdate > 50) {
+        const lastSquare = squares.length > 0 ? squares[squares.length - 1] : null;
+        cachedColors.color1 = lastSquare?.gradient?.color1 || '#00ffff';
+        cachedColors.color2 = lastSquare?.gradient?.color2 || cachedColors.color1;
+        lastColorUpdate = now;
+      }
+      
+      const currentColor = cachedColors.color1;
+      const currentColor2 = cachedColors.color2;
 
       diagonales.forEach((diag, index) => {
         if (removingDiagonalsRef.current.has(diag.id)) {
