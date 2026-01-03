@@ -1,15 +1,15 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { flushSync } from 'react-dom';
 import gsap from 'gsap';
 import { IMAGE_SIZES } from './variables';
 import './Background.scss';
 import Diagonales from './components/Diagonales/Diagonales';
 import CanvasRenderer from './components/CanvasRenderer/CanvasRenderer';
+import BorderSquaresSynthesizer from './components/BorderSquaresSynthesizer/BorderSquaresSynthesizer';
 import { useGallery } from '../Gallery/Gallery';
 
 const MAINCLASS = 'background';
 
-const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitialized, onVoiceCallbackRef, selectedTrack, showOnlyDiagonales = false, currentAudioIndex = null, onAllComplete = null, pause = null }) => {
+const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitialized, onVoiceCallbackRef, selectedTrack, showOnlyDiagonales = false, currentAudioIndex = null, onAllComplete = null, pause = null, isPlaying = true }) => {
   const [squares, setSquares] = useState([]);
   const squareRefs = useRef({});
   const animationTimelinesRef = useRef({});
@@ -37,17 +37,22 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
         const now = Date.now();
         const shouldHaveBackground = data.shouldBeSolid || false;
         
+        // Si NO tiene imagen (cuadrado con borde), el sintetizador se encarga de generarlo
+        // No crear nada en el estado para cuadrados con borde
+        if (!shouldHaveBackground) {
+          return; // El sintetizador procedural generará el cuadrado con borde
+        }
+        
+        // Solo procesar cuadrados con imagen
         // Si es una imagen y no ha pasado el tiempo mínimo, ignorar
-        if (shouldHaveBackground && (now - lastImageTimeRef.current < MIN_TIME_BETWEEN_IMAGES)) {
+        if (now - lastImageTimeRef.current < MIN_TIME_BETWEEN_IMAGES) {
           return;
         }
         
-        // Si es una imagen, actualizar el tiempo
-        if (shouldHaveBackground) {
-          lastImageTimeRef.current = now;
-        }
+        // Actualizar el tiempo para la próxima imagen
+        lastImageTimeRef.current = now;
         
-        const id = `square-${Date.now()}-${Math.random()}`;
+      const id = `square-${Date.now()}-${Math.random()}`;
       const lgtbColors = [
         '#FF0080', '#FF8000', '#FFFF00', '#00FF00', '#0080FF', '#8000FF',
         '#00FFFF', '#FF00FF', '#FFFFFF', '#FFB347', '#FFD700', '#C0C0C0',
@@ -55,41 +60,14 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
       
       const intensity = data?.intensity ?? 0.5;
       
-      // Para cuadrados sin imagen, usar color sólido que reacciona a la música
-      // Si tiene datos de audio, calcular color basado en ellos
-      let borderColor = null;
+      // Para cuadrados con imagen, usar gradiente
       let color1 = null;
       let color2 = null;
       
-      if (!shouldHaveBackground) {
-        // Cuadrados sin imagen: color sólido que reacciona a la música
-        // El color se calculará dinámicamente en updateColorFromMusic, pero establecemos un color inicial
-        // basado en los datos disponibles o un color por defecto que cambiará inmediatamente
-        if (data) {
-          const spectralCentroid = data?.spectralCentroid ?? 0;
-          const bassEnergy = data?.bassEnergy ?? 0;
-          const trebleEnergy = data?.trebleEnergy ?? 0;
-          const rhythmEnergy = data?.rhythmEnergy ?? 0;
-          
-          // Calcular color basado en las frecuencias del audio
-          // Usar spectralCentroid para el matiz (hue), y energía para saturación/brightness
-          const hue = (spectralCentroid * 360) % 360;
-          const saturation = Math.min(100, 50 + (bassEnergy + trebleEnergy) * 50);
-          const lightness = Math.min(90, 40 + (rhythmEnergy + intensity) * 30);
-          
-          borderColor = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
-        } else {
-          // Si no hay datos aún, usar un color inicial basado en tiempo que cambiará cuando se actualice
-          // Usar un color basado en tiempo para que al menos varíe y no sea siempre verde
-          const timeBasedHue = (Date.now() / 100) % 360;
-          borderColor = `hsl(${Math.round(timeBasedHue)}, 70%, 60%)`;
-        }
-      } else {
         // Para cuadrados con imagen, mantener el gradiente
         color1 = lgtbColors[colorIndexRef.current % lgtbColors.length];
         color2 = lgtbColors[(colorIndexRef.current + 1) % lgtbColors.length];
         colorIndexRef.current++;
-      }
       
       // Solo obtener imagen si está lista (pre-cargada)
       let imageUrl = null;
@@ -326,17 +304,16 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
         type,
         data,
         timestamp: Date.now(),
-        isTarget: shouldHaveBackground,
+        isTarget: true, // Siempre true porque solo creamos cuadrados con imagen
         imageUrl: imageUrl,
         imagePosition: imagePosition,
         imageRotation: imageRotation,
         isLastImage: isLastImage, // Marcar si es la última imagen
-        gradient: shouldHaveBackground && color1 && color2 ? {
+        gradient: color1 && color2 ? {
           color1: color1,
           color2: color2,
           angle: Math.floor(Math.random() * 360)
-        } : null,
-        borderColor: !shouldHaveBackground ? borderColor : null
+        } : null
       };
       
       setSquares(prev => {
@@ -352,13 +329,13 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
             if (squareRefs.current[square.id]) {
               const el = squareRefs.current[square.id];
               if (el) {
-              const img = el.querySelector(`.${MAINCLASS}__squareImage`);
-              if (img) {
-                img.src = '';
+                const img = el.querySelector(`.${MAINCLASS}__squareImage`);
+                if (img) {
+                  img.src = '';
                 // NO eliminar img del DOM - React lo hará automáticamente
+                }
               }
-            }
-            delete squareRefs.current[square.id];
+              delete squareRefs.current[square.id];
             }
           });
           newSquares = newSquares.slice(0, MAX_SQUARES);
@@ -379,19 +356,12 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
         el.animated = true;
         
         const intensity = square.data?.intensity ?? 0.5;
-        const isTarget = square.isTarget;
+        // Todos los cuadrados ahora son con imagen (el sintetizador maneja los de borde)
+        const isTarget = true;
         
-        // Duración diferente para cuadros con imagen vs cuadros con borde (sin imagen)
-        // Los cuadros con borde son más lentos
-        let baseDuration;
-        if (isTarget) {
-          // Cuadros con imagen: duración normal
-          baseDuration = square.type === 'beat' ? 10 : 8;
-        } else {
-          // Cuadros con borde (sin imagen): duración más larga para desplazamiento más lento
-          baseDuration = square.type === 'beat' ? 15 : 12;
-        }
-        const duration = baseDuration - (intensity * 2); // Factor de intensidad ajustado (menos reducción)
+        // Duración para cuadros con imagen
+        const baseDuration = square.type === 'beat' ? 10 : 8;
+        const duration = baseDuration - (intensity * 2); // Factor de intensidad ajustado
         
         try {
           const timeline = gsap.timeline();
@@ -418,14 +388,13 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
             // Limpiar referencias
             delete squareRefs.current[square.id];
             
-            // Eliminar del estado usando flushSync para sincronizar con React
-            // Esto evita conflictos entre GSAP y React al manipular el DOM
-            flushSync(() => {
-              setSquares(prev => prev.filter(s => s.id !== square.id));
-            });
+            // Eliminar del estado - usar setTimeout para evitar conflictos con el ciclo de renderizado
+            setTimeout(() => {
+            setSquares(prev => prev.filter(s => s.id !== square.id));
+            }, 0);
           };
           
-          if (isTarget) {
+          // Todos los cuadrados son con imagen ahora
             // Detectar si es Nachitos de Nochevieja
             const isCroquetas25 = selectedTrack && (
               selectedTrack.name?.toLowerCase().includes('nachitos de nochevieja') ||
@@ -585,139 +554,8 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
               }
             });
             }
-          } else {
-            // Cuadrados sin imagen: animación con color que reacciona a la música
-            // targetScale = 1.0 significa que cuando scale = 1.0, el cuadrado ocupa el 100% del viewport
-            const targetScale = 1.0;
-            const fadeStartProgress = 0.6;
-            const fadeEndProgress = 1.0;
-            
-            // Función para actualizar el color basado en la música
-            const updateColorFromMusic = () => {
-              if (!dataArrayRef?.current || !analyserRef?.current) {
-                // Si no hay analizador aún, usar color basado en tiempo para que al menos cambie
-                const timeBasedHue = (Date.now() / 100) % 360;
-                const defaultColor = `hsl(${Math.round(timeBasedHue)}, 70%, 60%)`;
-                el.style.setProperty('--square-border-color', defaultColor);
-                return;
-              }
-              
-              try {
-                const dataArray = dataArrayRef.current;
-                const analyser = analyserRef.current;
-                
-                analyser.getByteFrequencyData(dataArray);
-                
-                // Calcular métricas de audio
-                let sum = 0;
-                let bassSum = 0;
-                let trebleSum = 0;
-                const bassRange = Math.floor(dataArray.length * 0.1); // Primeros 10%
-                const trebleRange = Math.floor(dataArray.length * 0.8); // Últimos 20%
-                
-                for (let i = 0; i < dataArray.length; i++) {
-                  const normalized = dataArray[i] / 255;
-                  sum += normalized;
-                  if (i < bassRange) bassSum += normalized;
-                  if (i > trebleRange) trebleSum += normalized;
-                }
-                
-                const average = sum / dataArray.length;
-                const bassEnergy = bassRange > 0 ? bassSum / bassRange : 0;
-                const trebleEnergy = (dataArray.length - trebleRange) > 0 ? trebleSum / (dataArray.length - trebleRange) : 0;
-                
-                // Calcular spectral centroid aproximado
-                let weightedSum = 0;
-                let magnitudeSum = 0;
-                for (let i = 0; i < dataArray.length; i++) {
-                  const magnitude = dataArray[i] / 255;
-                  weightedSum += i * magnitude;
-                  magnitudeSum += magnitude;
-                }
-                const spectralCentroid = magnitudeSum > 0 ? weightedSum / magnitudeSum / dataArray.length : 0;
-                
-                // Calcular color basado en la música
-                // Asegurar que el hue cambie dinámicamente basado en el spectral centroid
-                const hue = (spectralCentroid * 360) % 360;
-                const saturation = Math.min(100, Math.max(50, 50 + (bassEnergy + trebleEnergy) * 50));
-                const lightness = Math.min(90, Math.max(40, 40 + (average + intensity) * 30));
-                
-                const newColor = `hsl(${Math.round(hue)}, ${Math.round(saturation)}%, ${Math.round(lightness)}%)`;
-                el.style.setProperty('--square-border-color', newColor);
-              } catch (error) {
-                // Si hay error, usar color basado en tiempo para que al menos cambie
-                const timeBasedHue = (Date.now() / 100) % 360;
-                const fallbackColor = `hsl(${Math.round(timeBasedHue)}, 70%, 60%)`;
-                el.style.setProperty('--square-border-color', fallbackColor);
-              }
-            };
-            
-            // Throttle para actualizaciones de color (cada 3 frames = ~50ms a 60fps)
-            let frameCount = 0;
-            const colorUpdateInterval = 3;
-            
-            timeline.fromTo(el, 
-              { 
-                scale: 0, 
-                z: -600,
-                opacity: 1
-              },
-              {
-                scale: targetScale,
-                z: 400,
-                opacity: 1,
-                duration: duration,
-                ease: 'none',
-                force3D: true,
-                onUpdate: function() {
-                  const progress = this.progress();
-                  
-                  // Actualizar color basado en la música (throttled)
-                  // IMPORTANTE: Actualizar siempre, no solo cada N frames, para que el color cambie suavemente
-                  frameCount++;
-                  if (frameCount % colorUpdateInterval === 0 || frameCount === 1) {
-                    // Siempre actualizar en el primer frame y luego cada N frames
-                    updateColorFromMusic();
-                  }
-                  
-                  // Calcular tamaño relativo a la ventana para ajustar opacidad
-                  const rect = el.getBoundingClientRect();
-                  const viewportWidth = window.innerWidth;
-                  const viewportHeight = window.innerHeight;
-                  const elementWidth = rect.width;
-                  const elementHeight = rect.height;
-                  
-                  // Calcular qué porcentaje del viewport ocupa el elemento
-                  const widthRatio = elementWidth / viewportWidth;
-                  const heightRatio = elementHeight / viewportHeight;
-                  const maxRatio = Math.max(widthRatio, heightRatio);
-                  
-                  // Si el elemento ocupa más del 70% del viewport, empezar a reducir opacidad
-                  // Opacidad base: 0.5, se reduce hasta 0 cuando alcanza 100% del viewport
-                  let sizeBasedOpacity = 0.5;
-                  if (maxRatio > 0.7) {
-                    const fadeStart = 0.7;
-                    const fadeEnd = 1.0;
-                    const fadeProgress = (maxRatio - fadeStart) / (fadeEnd - fadeStart);
-                    sizeBasedOpacity = 0.5 * (1 - Math.min(1, fadeProgress));
-                  }
-                  
-                  // Aplicar fade out normal si está en esa fase
-                  let finalOpacity = sizeBasedOpacity;
-                  if (progress >= fadeStartProgress) {
-                    const fadeProgress = (progress - fadeStartProgress) / (fadeEndProgress - fadeStartProgress);
-                    const fadeOutOpacity = 1 - fadeProgress;
-                    finalOpacity = Math.min(sizeBasedOpacity, fadeOutOpacity);
-                  }
-                  
-                  gsap.set(el, { opacity: Math.max(0, finalOpacity) });
-                },
-                onComplete: () => {
-                  cleanupSquare();
-                }
-              }
-            );
-          }
+          // Los cuadrados sin imagen ahora los maneja el sintetizador procedural
+          // No necesitamos animarlos aquí
         } catch (error) {
           console.error(`[Background] Animation error: ${error.message}`);
           if (squareRefs.current[square.id]) {
@@ -734,15 +572,46 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
           }
           if (animationTimelinesRef.current[square.id]) {
             animationTimelinesRef.current[square.id].kill();
-            delete animationTimelinesRef.current[square.id];
+          delete animationTimelinesRef.current[square.id];
           }
-          flushSync(() => {
-            setSquares(prev => prev.filter(s => s.id !== square.id));
-          });
+          // Eliminar del estado - usar setTimeout para evitar conflictos con el ciclo de renderizado
+          setTimeout(() => {
+          setSquares(prev => prev.filter(s => s.id !== square.id));
+          }, 0);
         }
       }
     });
   }, [squares]);
+
+  // Pausar/reanudar animaciones cuando el audio se pausa/reanuda
+  useEffect(() => {
+    // Cuando isPlaying cambia, pausar/reanudar animaciones GSAP
+    if (!isPlaying) {
+      // Pausar todas las animaciones
+      Object.values(animationTimelinesRef.current).forEach(timeline => {
+        if (timeline) timeline.pause();
+      });
+    } else {
+      // Reanudar todas las animaciones
+      Object.values(animationTimelinesRef.current).forEach(timeline => {
+        if (timeline) timeline.resume();
+      });
+    }
+  }, [isPlaying]);
+
+  useEffect(() => {
+    if (!isPlaying) {
+      // Pausar todas las animaciones
+      Object.values(animationTimelinesRef.current).forEach(timeline => {
+        if (timeline) timeline.pause();
+      });
+    } else {
+      // Reanudar todas las animaciones
+      Object.values(animationTimelinesRef.current).forEach(timeline => {
+        if (timeline) timeline.resume();
+      });
+    }
+  }, [isPlaying]);
 
   useEffect(() => {
     return () => {
@@ -763,9 +632,10 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
       });
       squareRefs.current = {};
       
-      flushSync(() => {
-        setSquares([]);
-      });
+      // Limpiar estado - usar setTimeout para evitar conflictos con el ciclo de renderizado
+      setTimeout(() => {
+      setSquares([]);
+      }, 0);
     };
   }, [selectedTrack]);
 
@@ -855,10 +725,20 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
         isInitialized={showOnlyDiagonales ? (analyserRef?.current ? true : false) : isInitialized}
         onVoiceCallbackRef={showOnlyDiagonales ? null : onVoiceCallbackRef}
       />
-        {/* Canvas unificado para cuadrados con borde */}
+        {/* Sintetizador procedural para cuadrados con borde - mucho más ligero */}
         {!showOnlyDiagonales && (
+        <BorderSquaresSynthesizer
+          analyserRef={analyserRef}
+          dataArrayRef={dataArrayRef}
+          onTriggerCallbackRef={onTriggerCallbackRef}
+          onVoiceCallbackRef={onVoiceCallbackRef}
+          key="synthesizer" // Forzar re-render cuando cambie el callback
+        />
+        )}
+        {/* Canvas para imágenes solamente */}
+      {!showOnlyDiagonales && (
         <CanvasRenderer
-          squares={squares}
+          squares={squares.filter(s => s.isTarget)} // Solo cuadrados con imagen
           diagonales={[]} // Las diagonales se renderizan en DOM por Diagonales
           analyserRef={analyserRef}
           dataArrayRef={dataArrayRef}
@@ -867,26 +747,11 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
           diagonalRotationsRef={null} // Por ahora null, las diagonales se renderizan en DOM
           squareRefs={squareRefs} // Pasar squareRefs para leer valores de GSAP
         />
-        )}
+      )}
       {/* Blur overlay permanente sobre las diagonales - backdrop-filter difumina lo que está detrás */}
       <div className={`${MAINCLASS}__blurOverlay`} />
       {!showOnlyDiagonales && squares.map(square => {
-        const isTarget = square.isTarget;
-        
-        // Solo renderizar cuadrados con imagen (los de borde se renderizan en CanvasRenderer)
-        if (!isTarget) {
-          // Crear un div invisible para que GSAP pueda animarlo y sincronizar con el canvas
-          return (
-            <div
-              key={square.id}
-              ref={el => squareRefs.current[square.id] = el}
-              className={`${MAINCLASS}__square`}
-              data-square-id={square.id}
-              style={{ visibility: 'hidden', pointerEvents: 'none' }}
-            />
-          );
-        }
-        
+        // Todos los cuadrados ahora son con imagen (el sintetizador maneja los de borde)
         // Cuadrados con imagen
         // Detectar si es GIF - los GIFs se renderizan en DOM porque canvas no soporta animación
         const isGif = square.imageUrl && (
@@ -895,44 +760,44 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
         
         if (isGif) {
           // GIFs: renderizar en DOM para que se animen
-          const style = {};
-          const color1 = square.gradient?.color1 || '#00ffff';
-          const color2 = square.gradient?.color2 || '#00ffff';
-          const angle = square.gradient?.angle || 45;
-          style['--square-color-1'] = color1;
-          style['--square-color-2'] = color2;
-          style['--square-gradient-angle'] = `${angle}deg`;
+        const style = {};
+        const color1 = square.gradient?.color1 || '#00ffff';
+        const color2 = square.gradient?.color2 || '#00ffff';
+        const angle = square.gradient?.angle || 45;
+        style['--square-color-1'] = color1;
+        style['--square-color-2'] = color2;
+        style['--square-gradient-angle'] = `${angle}deg`;
           
           // Detectar si es JPEG o GIF para aplicar sombra (el CSS ya tiene drop-shadow y box-shadow)
           const imageUrlLower = square.imageUrl?.toLowerCase() || '';
           const isJpeg = imageUrlLower.endsWith('.jpg') || imageUrlLower.endsWith('.jpeg');
           const shouldHaveShadow = isJpeg || isGif;
-          
-          return (
-            <div
-              key={square.id}
-              ref={el => squareRefs.current[square.id] = el}
-              className={`${MAINCLASS}__square ${MAINCLASS}__square--target`}
-              data-square-id={square.id}
-              style={style}
-            >
-              {square.imageUrl && (
-                <img 
-                  src={square.imageUrl} 
-                  alt="Gallery"
-                  className={`${MAINCLASS}__squareImage`}
-                  style={{
-                    left: square.imagePosition?.x ?? '50%',
-                    top: square.imagePosition?.y ?? '50%',
+        
+        return (
+          <div
+            key={square.id}
+            ref={el => squareRefs.current[square.id] = el}
+            className={`${MAINCLASS}__square ${MAINCLASS}__square--target`}
+            data-square-id={square.id}
+            style={style}
+          >
+            {square.imageUrl && (
+              <img 
+                src={square.imageUrl} 
+                alt="Gallery"
+                className={`${MAINCLASS}__squareImage`}
+                style={{
+                  left: square.imagePosition?.x ?? '50%',
+                  top: square.imagePosition?.y ?? '50%',
                     transform: `translate(-50%, -50%) rotate(${square.imageRotation ?? 0}deg)`,
                     // Asegurar que la sombra se aplique (el CSS ya tiene filter y box-shadow)
                     filter: shouldHaveShadow ? 'drop-shadow(0 4px 12px rgba(0, 0, 0, 0.6)) drop-shadow(0 2px 6px rgba(0, 0, 0, 0.4))' : 'none',
                     boxShadow: shouldHaveShadow ? '0 4px 20px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3)' : 'none'
-                  }}
-                />
-              )}
-            </div>
-          );
+                }}
+              />
+            )}
+          </div>
+        );
         } else {
           // No-GIFs: solo div invisible para GSAP (se renderizan en CanvasRenderer)
           return (

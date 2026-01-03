@@ -120,7 +120,7 @@ const Croquetas25 = () => {
 };
 
 const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
-  const { audios, guion: guionPath, play, isLoaded, loadingProgress, audioRef, analyserRef, dataArrayRef, timeDataArrayRef, currentIndex, seekToAudio, getTotalElapsed, getTotalDuration, audioDurations } = useAudio();
+  const { audios, guion: guionPath, play, pause: pauseAudio, isLoaded, loadingProgress, audioRef, analyserRef, dataArrayRef, timeDataArrayRef, currentIndex, seekToAudio, getTotalElapsed, getTotalDuration, audioDurations } = useAudio();
   // Cargar imágenes desde el principio (audioStarted = true para que se carguen inmediatamente)
   // El parámetro audioStarted controla cuándo se cargan las imágenes, no cuándo se muestran
   const { isLoading: imagesLoading, preloadProgress: imagesProgress, seekToImagePosition } = useGallery(track, null, null, currentIndex, true);
@@ -368,6 +368,8 @@ const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
         showOnlyDiagonales={false}
         onTriggerCallbackRef={onTriggerCallbackRef}
         onVoiceCallbackRef={onVoiceCallbackRef}
+        pause={pauseAudio}
+        isPlaying={isPlaying}
       />
 
       {showLoading && (

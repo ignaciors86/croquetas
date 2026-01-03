@@ -29,7 +29,8 @@ const CanvasRenderer = ({
   const imageCacheRef = useRef(new Map()); // Cache de imágenes cargadas
   const offscreenCanvasRef = useRef(null); // Canvas offscreen para imágenes
   const lastFrameTimeRef = useRef(0);
-  const borderSquareDataRef = useRef(new Map()); // Datos de animación de cuadrados con borde (desde GSAP)
+  // Los cuadrados con borde ahora los maneja el sintetizador procedural
+  // borderSquareDataRef ya no se necesita
   const imageSquareDataRef = useRef(new Map()); // Datos de animación de cuadrados con imagen (desde GSAP)
   const colorUpdateFrameRef = useRef(0);
   
@@ -111,8 +112,7 @@ const CanvasRenderer = ({
     });
   }, [squares]);
   
-  // Filtrar cuadrados con borde (sin imagen) y con imagen
-  const borderSquares = squares.filter(square => !square.isTarget);
+  // Solo cuadrados con imagen (el sintetizador maneja los de borde)
   const imageSquares = squares.filter(square => square.isTarget);
   
   // Detectar GIFs - estos deben renderizarse en DOM porque canvas no soporta animación de GIFs
@@ -212,229 +212,9 @@ const CanvasRenderer = ({
     return () => clearInterval(interval);
   }, [canvasImageSquares, squareRefs]);
   
-  // Inicializar datos de animación para cuadrados con borde (desde GSAP)
-  useEffect(() => {
-    borderSquares.forEach(square => {
-      if (!borderSquareDataRef.current.has(square.id)) {
-        borderSquareDataRef.current.set(square.id, {
-          progress: 0,
-          scale: 0,
-          z: -600,
-          opacity: 0.5,
-          lastOpacity: 0.5,
-          startTime: Date.now(),
-          intensity: square.data?.intensity ?? 0.5,
-          type: square.type,
-          borderColor: square.borderColor || square.data?.borderColor || '#00ffff',
-          lastColorUpdate: 0,
-          targetColor: null,
-          currentColorHSL: null
-        });
-      }
-    });
-    
-    // Limpiar cuadros que ya no existen
-    const existingIds = new Set(borderSquares.map(s => s.id));
-    borderSquareDataRef.current.forEach((data, id) => {
-      if (!existingIds.has(id)) {
-        borderSquareDataRef.current.delete(id);
-      }
-    });
-  }, [borderSquares]);
-  
-  // Actualizar progreso desde GSAP para cuadrados con borde
-  useEffect(() => {
-    const updateProgress = () => {
-      borderSquares.forEach(square => {
-        const timeline = animationTimelinesRef?.current?.[square.id];
-        const data = borderSquareDataRef.current.get(square.id);
-        
-        if (timeline && data) {
-          const progress = timeline.progress();
-          data.progress = progress;
-          
-          // Calcular scale y z desde el progreso (igual que GSAP)
-          const targetScale = 1.0;
-          data.scale = targetScale * progress;
-          data.z = -600 + (400 - (-600)) * progress;
-          
-          // Calcular opacidad objetivo
-          const fadeStartProgress = 0.6;
-          let targetOpacity = 0.5;
-          if (progress >= fadeStartProgress) {
-            const fadeProgress = (progress - fadeStartProgress) / (1.0 - fadeStartProgress);
-            targetOpacity = 0.5 * (1 - fadeProgress);
-          }
-          
-          // Suavizar cambios de opacidad
-          if (data.lastOpacity === undefined) {
-            data.lastOpacity = targetOpacity;
-          }
-          const opacitySmoothing = 0.2;
-          data.opacity = data.lastOpacity * (1 - opacitySmoothing) + targetOpacity * opacitySmoothing;
-          data.lastOpacity = data.opacity;
-        }
-      });
-    };
-    
-    // Actualizar más frecuentemente para mayor suavidad (cada 4ms)
-    const interval = setInterval(updateProgress, 4);
-    
-    return () => clearInterval(interval);
-  }, [borderSquares, animationTimelinesRef]);
-  
-  // Calcular color basado en música para cuadrados con borde
-  const calculateColorFromMusic = useCallback(() => {
-    if (!dataArrayRef?.current || !analyserRef?.current) {
-      const timeBasedHue = (Date.now() / 200) % 360;
-      return {
-        hue: Math.round(timeBasedHue),
-        saturation: 70,
-        lightness: 60
-      };
-    }
-    
-    try {
-      const dataArray = dataArrayRef.current;
-      const analyser = analyserRef.current;
-      
-      analyser.getByteFrequencyData(dataArray);
-      
-      // Calcular métricas básicas de audio
-      let sum = 0;
-      let bassSum = 0;
-      let trebleSum = 0;
-      const bassRange = Math.floor(dataArray.length * 0.15);
-      const trebleRange = Math.floor(dataArray.length * 0.7);
-      
-      for (let i = 0; i < dataArray.length; i++) {
-        const normalized = dataArray[i] / 255;
-        sum += normalized;
-        if (i < bassRange) bassSum += normalized;
-        if (i >= trebleRange) trebleSum += normalized;
-      }
-      
-      const average = sum / dataArray.length;
-      const bassEnergy = bassRange > 0 ? bassSum / bassRange : 0;
-      const trebleEnergy = (dataArray.length - trebleRange) > 0 ? trebleSum / (dataArray.length - trebleRange) : 0;
-      
-      // Calcular spectral centroid simple
-      let weightedSum = 0;
-      let magnitudeSum = 0;
-      for (let i = 0; i < dataArray.length; i++) {
-        const magnitude = dataArray[i] / 255;
-        weightedSum += i * magnitude;
-        magnitudeSum += magnitude;
-      }
-      const spectralCentroid = magnitudeSum > 0 ? weightedSum / magnitudeSum / dataArray.length : 0;
-      
-      // Calcular color simple y suave
-      const hue = (spectralCentroid * 300) % 360;
-      const saturation = 70;
-      const lightness = Math.min(70, Math.max(50, 50 + average * 20));
-      
-      return {
-        hue: Math.round(hue),
-        saturation: Math.round(saturation),
-        lightness: Math.round(lightness)
-      };
-    } catch (error) {
-      const timeBasedHue = (Date.now() / 200) % 360;
-      return {
-        hue: Math.round(timeBasedHue),
-        saturation: 70,
-        lightness: 60
-      };
-    }
-  }, [analyserRef, dataArrayRef]);
-  
-  // Grosor fijo de 1px para cuadrados con borde
-  const LINE_WIDTH = 1;
-  
-  // Dibujar un cuadrado con borde (usando datos de GSAP)
-  const drawBorderSquare = useCallback((ctx, square, squareData) => {
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
-    const centerX = viewportWidth / 2;
-    const centerY = viewportHeight / 2;
-    
-    // Calcular tamaño base (igual que GSAP: desde 0 hasta targetScale * viewport)
-    const targetScale = 1.0;
-    const scale = squareData.scale;
-    
-    // El tamaño base es el viewport completo
-    const finalWidth = (viewportWidth / targetScale) * scale;
-    const finalHeight = (viewportHeight / targetScale) * scale;
-    
-    // Calcular color desde música con interpolación suave
-    const now = Date.now();
-    const timeSinceLastUpdate = now - squareData.lastColorUpdate;
-    
-    // Actualizar color objetivo cada 100ms (10fps) para cambios más suaves
-    if (timeSinceLastUpdate >= 100) {
-      const newColor = calculateColorFromMusic();
-      
-      // Si no hay color anterior, inicializar
-      if (!squareData.targetColor) {
-        squareData.targetColor = newColor;
-        squareData.currentColorHSL = newColor;
-      } else {
-        // Actualizar color objetivo
-        squareData.targetColor = newColor;
-      }
-      
-      squareData.lastColorUpdate = now;
-    }
-    
-    // Interpolar suavemente hacia el color objetivo
-    if (squareData.targetColor && squareData.currentColorHSL) {
-      const interpolationSpeed = 0.03; // Velocidad de interpolación muy lenta para cambio suave
-      const hueDiff = Math.abs(squareData.targetColor.hue - squareData.currentColorHSL.hue);
-      const hueDiffWrapped = Math.min(hueDiff, 360 - hueDiff);
-      
-      // Interpolar hue (manejar wrap-around)
-      let newHue = squareData.currentColorHSL.hue;
-      if (hueDiffWrapped < 180) {
-        newHue = squareData.currentColorHSL.hue + (squareData.targetColor.hue - squareData.currentColorHSL.hue) * interpolationSpeed;
-      } else {
-        if (squareData.targetColor.hue > squareData.currentColorHSL.hue) {
-          newHue = squareData.currentColorHSL.hue - (360 - (squareData.targetColor.hue - squareData.currentColorHSL.hue)) * interpolationSpeed;
-        } else {
-          newHue = squareData.currentColorHSL.hue + (360 - (squareData.currentColorHSL.hue - squareData.targetColor.hue)) * interpolationSpeed;
-        }
-      }
-      newHue = ((newHue % 360) + 360) % 360;
-      
-      // Interpolar saturation y lightness
-      const newSaturation = squareData.currentColorHSL.saturation + (squareData.targetColor.saturation - squareData.currentColorHSL.saturation) * interpolationSpeed;
-      const newLightness = squareData.currentColorHSL.lightness + (squareData.targetColor.lightness - squareData.currentColorHSL.lightness) * interpolationSpeed;
-      
-      squareData.currentColorHSL = {
-        hue: newHue,
-        saturation: newSaturation,
-        lightness: newLightness
-      };
-    } else if (squareData.targetColor) {
-      squareData.currentColorHSL = squareData.targetColor;
-    }
-    
-    const color = squareData.currentColorHSL 
-      ? `hsl(${Math.round(squareData.currentColorHSL.hue)}, ${Math.round(squareData.currentColorHSL.saturation)}%, ${Math.round(squareData.currentColorHSL.lightness)}%)`
-      : '#00ffff';
-    
-    ctx.save();
-    ctx.globalAlpha = squareData.opacity;
-    ctx.translate(centerX, centerY);
-    
-    // Dibujar borde rectangular con grosor fijo de 1px
-    ctx.strokeStyle = color;
-    ctx.lineWidth = LINE_WIDTH;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.strokeRect(-finalWidth / 2, -finalHeight / 2, finalWidth, finalHeight);
-    
-    ctx.restore();
-  }, [calculateColorFromMusic]);
+  // Los cuadrados con borde ahora los maneja el sintetizador procedural
+  // No necesitamos inicializar ni actualizar datos de cuadrados con borde aquí
+  // calculateColorFromMusic y drawBorderSquare ya no se necesitan
   
   // Dibujar un cuadrado con imagen (usando datos de GSAP)
   const drawImageSquare = useCallback((ctx, square, squareData) => {
@@ -815,15 +595,10 @@ const CanvasRenderer = ({
         drawDiagonal(ctx, diag, rotation);
       });
       
-      // Dibujar cuadrados con borde PRIMERO (detrás)
-      borderSquares.forEach(square => {
-        const squareData = borderSquareDataRef.current.get(square.id);
-        if (squareData && squareData.progress < 1) {
-          drawBorderSquare(ctx, square, squareData);
-        }
-      });
+      // Los cuadrados con borde ahora los maneja el sintetizador procedural
+      // No dibujarlos aquí
       
-      // Dibujar cuadrados con imagen DESPUÉS (delante de los bordes) - solo los que NO son GIFs
+      // Dibujar cuadrados con imagen - solo los que NO son GIFs
       canvasImageSquares.forEach(square => {
         const squareData = imageSquareDataRef.current.get(square.id);
         if (squareData && squareData.opacity > 0) {
@@ -841,7 +616,7 @@ const CanvasRenderer = ({
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [borderSquares, canvasImageSquares, diagonales, drawDiagonal, drawBorderSquare, drawImageSquare]);
+  }, [canvasImageSquares, diagonales, drawDiagonal, drawImageSquare]);
   
   return (
     <canvas 
