@@ -78,18 +78,31 @@ const CanvasRenderer = ({
     };
   }, []);
   
-  // Precargar imágenes en cache
+  // Precargar imágenes en cache - solo agregar al cache cuando estén completamente cargadas
   const preloadImage = useCallback((url) => {
     if (imageCacheRef.current.has(url)) {
-      return imageCacheRef.current.get(url);
+      const cachedImg = imageCacheRef.current.get(url);
+      // Verificar que la imagen en cache esté completamente cargada
+      if (cachedImg && cachedImg.complete && cachedImg.naturalWidth > 0 && cachedImg.naturalHeight > 0) {
+        return Promise.resolve(cachedImg);
+      } else {
+        // Si la imagen en cache no está lista, eliminarla y recargar
+        imageCacheRef.current.delete(url);
+      }
     }
     
     const img = new Image();
     img.crossOrigin = 'anonymous';
     const promise = new Promise((resolve, reject) => {
       img.onload = () => {
-        imageCacheRef.current.set(url, img);
-        resolve(img);
+        // Verificar que la imagen esté completamente cargada antes de agregarla al cache
+        if (img.complete && img.naturalWidth > 0 && img.naturalHeight > 0) {
+          imageCacheRef.current.set(url, img);
+          resolve(img);
+        } else {
+          // Si no está completamente cargada, rechazar
+          reject(new Error(`Image ${url} not fully loaded`));
+        }
       };
       img.onerror = reject;
       img.src = url;
@@ -248,9 +261,16 @@ const CanvasRenderer = ({
     ctx.translate(currentX, currentY);
     ctx.rotate((rotation * Math.PI) / 180);
     
-    // Dibujar imagen
+    // Dibujar imagen - solo si está completamente cargada
     const img = imageCacheRef.current.get(squareData.imageUrl);
-    if (img && img.complete && img.naturalWidth > 0 && img.naturalHeight > 0) {
+    if (!img || !img.complete || img.naturalWidth === 0 || img.naturalHeight === 0) {
+      // Imagen no lista, no dibujar - restaurar contexto y salir
+      ctx.restore();
+      return;
+    }
+    
+    // Imagen lista, proceder a dibujar
+    if (img) {
       // Calcular tamaño manteniendo proporción de la imagen (object-fit: contain)
       const imgAspectRatio = img.naturalWidth / img.naturalHeight;
       let imgWidth, imgHeight;
@@ -274,25 +294,28 @@ const CanvasRenderer = ({
       
       // Aplicar sombra si es JPEG o GIF - IMPORTANTE: aplicar sombra ANTES de dibujar
       if (shouldHaveShadow) {
-        // Primera sombra (más grande y difusa)
+        // Configurar sombra antes de dibujar
         ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
         ctx.shadowBlur = 12;
         ctx.shadowOffsetX = 0;
         ctx.shadowOffsetY = 4;
+        
+        // Dibujar imagen con sombra (primera pasada - sombra grande)
         ctx.drawImage(img, -imgWidth / 2, -imgHeight / 2, imgWidth, imgHeight);
         
-        // Segunda sombra (más pequeña y definida)
+        // Segunda sombra (más pequeña y definida) - dibujar encima
         ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
         ctx.shadowBlur = 6;
         ctx.shadowOffsetX = 0;
         ctx.shadowOffsetY = 2;
         ctx.drawImage(img, -imgWidth / 2, -imgHeight / 2, imgWidth, imgHeight);
         
-        // Resetear sombra para el siguiente dibujado
+        // Dibujar imagen final sin sombra para que se vea nítida
         ctx.shadowColor = 'transparent';
         ctx.shadowBlur = 0;
         ctx.shadowOffsetX = 0;
         ctx.shadowOffsetY = 0;
+        ctx.drawImage(img, -imgWidth / 2, -imgHeight / 2, imgWidth, imgHeight);
       } else {
         // Sin sombra para PNG (tiene transparencia)
         ctx.shadowBlur = 0;

@@ -5,6 +5,7 @@ import './Background.scss';
 import Diagonales from './components/Diagonales/Diagonales';
 import CanvasRenderer from './components/CanvasRenderer/CanvasRenderer';
 import BorderSquaresSynthesizer from './components/BorderSquaresSynthesizer/BorderSquaresSynthesizer';
+import DiagonalSynthesizer from './components/DiagonalSynthesizer/DiagonalSynthesizer';
 import { useGallery } from '../Gallery/Gallery';
 
 const MAINCLASS = 'background';
@@ -75,8 +76,16 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
       if (shouldHaveBackground) {
         // Verificar si la próxima imagen será la última ANTES de obtenerla
         isLastImage = isLastImageRef?.current || false;
-        imageUrl = getNextImage();
-        // El flag se mantiene hasta que se use, así que isLastImage ya está correcto
+        const nextImage = getNextImage();
+        
+        // getNextImage ya verifica que la imagen esté en estado 'ready' y completamente cargada
+        // Si devuelve null, significa que no hay imágenes listas
+        if (!nextImage) {
+          // No hay imagen lista, no crear cuadrado
+          return;
+        }
+        
+        imageUrl = nextImage;
       }
       
       // Calcular posición evitando la zona central inferior donde está el prompt
@@ -445,7 +454,7 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
                   y: finalY,
                   opacity: 1,
                   duration: duration,
-                  ease: 'power1.out',
+                  ease: 'power3.out', // Más suave al inicio, como si viniera de un largo viaje
                   force3D: true,
                   onUpdate: function() {
                     const progress = this.progress();
@@ -508,7 +517,7 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
                   y: finalY,
                   opacity: 1,
                   duration: timeToScale1,
-                  ease: 'power1.out',
+                  ease: 'power3.out', // Más suave al inicio, como si viniera de un largo viaje
                   force3D: true
                 }
               );
@@ -718,23 +727,36 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
 
   return (
     <div className={MAINCLASS}>
+      {/* Diagonales fijas en DOM (solo las fijas, las dinámicas van en canvas) */}
       <Diagonales 
         squares={showOnlyDiagonales ? [] : squares}
         analyserRef={analyserRef}
         dataArrayRef={dataArrayRef}
         isInitialized={showOnlyDiagonales ? (analyserRef?.current ? true : false) : isInitialized}
-        onVoiceCallbackRef={showOnlyDiagonales ? null : onVoiceCallbackRef}
+        onVoiceCallbackRef={showOnlyDiagonales ? null : null} // No pasar callback - las dinámicas van en sintetizador
+        onlyFixed={true} // Solo renderizar diagonales fijas
       />
-        {/* Sintetizador procedural para cuadrados con borde - mucho más ligero */}
-        {!showOnlyDiagonales && (
+      {/* Sintetizador procedural para diagonales dinámicas - mucho más ligero */}
+      {!showOnlyDiagonales && (
+        <DiagonalSynthesizer
+          analyserRef={analyserRef}
+          dataArrayRef={dataArrayRef}
+          onVoiceCallbackRef={onVoiceCallbackRef}
+          squares={squares}
+          currentAudioIndex={currentAudioIndex}
+        />
+      )}
+      {/* Sintetizador procedural para cuadrados con borde - mucho más ligero */}
+      {!showOnlyDiagonales && (
         <BorderSquaresSynthesizer
           analyserRef={analyserRef}
           dataArrayRef={dataArrayRef}
           onTriggerCallbackRef={onTriggerCallbackRef}
           onVoiceCallbackRef={onVoiceCallbackRef}
+          currentAudioIndex={currentAudioIndex}
           key="synthesizer" // Forzar re-render cuando cambie el callback
         />
-        )}
+      )}
         {/* Canvas para imágenes solamente */}
       {!showOnlyDiagonales && (
         <CanvasRenderer

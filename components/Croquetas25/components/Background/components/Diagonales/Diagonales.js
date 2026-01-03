@@ -2,7 +2,7 @@ import React, { useRef, useEffect, useState } from 'react';
 import gsap from 'gsap';
 import './Diagonales.scss';
 
-const Diagonales = ({ squares, analyserRef, dataArrayRef, isInitialized, onVoiceCallbackRef }) => {
+const Diagonales = ({ squares, analyserRef, dataArrayRef, isInitialized, onVoiceCallbackRef, onlyFixed = false }) => {
   const [diagonales, setDiagonales] = useState([]);
   const diagonalRefs = useRef({});
   const rotationRefs = useRef({});
@@ -103,9 +103,10 @@ const Diagonales = ({ squares, analyserRef, dataArrayRef, isInitialized, onVoice
         });
       }
       
-      const initialDiagonales = [
+      // Si onlyFixed es true, solo crear diagonales fijas (las dinámicas van en el sintetizador)
+      const initialDiagonales = onlyFixed ? fixedDiagonales : [
         ...fixedDiagonales,
-        // Diagonales animadas iniciales
+        // Diagonales animadas iniciales (solo si no es onlyFixed)
         {
           id: 'diag-initial-1',
           baseAngle: 45,
@@ -158,7 +159,7 @@ const Diagonales = ({ squares, analyserRef, dataArrayRef, isInitialized, onVoice
       lastDiagonalAngleRef.current = -135;
       setDiagonales(initialDiagonales);
     }
-  }, [isInitialized, diagonales.length]);
+  }, [isInitialized, diagonales.length, onlyFixed]);
 
   // Crear handler estable para callbacks de beats/diagonales - se crea una sola vez
   useEffect(() => {
@@ -203,8 +204,16 @@ const Diagonales = ({ squares, analyserRef, dataArrayRef, isInitialized, onVoice
     }
   }, []); // Sin dependencias - se crea una sola vez
 
-  // Registrar el callback en el ref externo
+  // Registrar el callback en el ref externo (solo si no es onlyFixed)
   useEffect(() => {
+    // Si onlyFixed es true, no registrar callback (las dinámicas van en el sintetizador)
+    if (onlyFixed) {
+      if (onVoiceCallbackRef && onVoiceCallbackRef.current) {
+        onVoiceCallbackRef.current = null;
+      }
+      return;
+    }
+    
     if (!onVoiceCallbackRef) {
       // Si el ref es null, limpiar el callback
       if (onVoiceCallbackRef && onVoiceCallbackRef.current) {
@@ -248,7 +257,7 @@ const Diagonales = ({ squares, analyserRef, dataArrayRef, isInitialized, onVoice
     
     // Siempre actualizar el callback en el ref externo cuando cambia el ref
     onVoiceCallbackRef.current = voiceCallbackHandlerRef.current;
-  }, [onVoiceCallbackRef]);
+  }, [onVoiceCallbackRef, onlyFixed]);
 
   // Inicializar rotación de todas las diagonales - se ejecuta cuando cambian las diagonales
   useEffect(() => {
