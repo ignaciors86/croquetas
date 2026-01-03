@@ -170,7 +170,7 @@ const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
           }).catch((err2) => {
             console.log('[CroquetasContent] Error en reintento de play', err2);
           });
-        }, 300);
+              }, 300);
       });
     }
   }, [everythingReady, autoPlayAttempted, isPlaying]);
@@ -185,7 +185,7 @@ const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
         autoPlayAttempted,
         audioReady,
         imagesReady,
-        imagesProgress,
+      imagesProgress,
         loadingProgress
       });
       if (!loadingFadedOut) {
@@ -277,7 +277,7 @@ const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
             console.error('[CroquetasContent] Error parseando objeto del guion:', parseError);
             setGuion(null);
           }
-        } else {
+    } else {
           console.warn('[CroquetasContent] No se encontró export default en el guion');
           setGuion(null);
         }

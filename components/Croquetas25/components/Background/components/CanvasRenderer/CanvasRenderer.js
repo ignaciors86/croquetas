@@ -1,4 +1,6 @@
 import React, { useRef, useEffect, useCallback } from 'react';
+import gsap from 'gsap';
+import { IMAGE_SIZES } from '../../variables';
 import './CanvasRenderer.scss';
 
 /**
@@ -19,16 +21,25 @@ const CanvasRenderer = ({
   dataArrayRef,
   selectedTrack,
   diagonalRotationsRef = null, // Ref que contiene las rotaciones actuales de las diagonales
-  animationTimelinesRef = null // Ref que contiene las timelines de GSAP para cuadrados con borde
+  animationTimelinesRef = null, // Ref que contiene las timelines de GSAP para cuadrados con borde
+  squareRefs = null // Ref a los elementos DOM de los cuadrados para leer valores de GSAP
 }) => {
   const canvasRef = useRef(null);
   const animationFrameRef = useRef(null);
   const imageCacheRef = useRef(new Map()); // Cache de imágenes cargadas
   const offscreenCanvasRef = useRef(null); // Canvas offscreen para imágenes
   const lastFrameTimeRef = useRef(0);
-  const squareProgressRef = useRef(new Map()); // Progreso de animación de cada cuadrado (para cuadrados con imagen)
   const borderSquareDataRef = useRef(new Map()); // Datos de animación de cuadrados con borde (desde GSAP)
+  const imageSquareDataRef = useRef(new Map()); // Datos de animación de cuadrados con imagen (desde GSAP)
   const colorUpdateFrameRef = useRef(0);
+  
+  // Guardar squareRefs para poder leer valores de GSAP
+  useEffect(() => {
+    if (squareRefs) {
+      // squareRefs es un objeto con refs a elementos DOM
+      // No necesitamos hacer nada aquí, solo usarlo en el render
+    }
+  }, [squareRefs]);
   
   // Inicializar canvas y contexto
   useEffect(() => {
@@ -100,8 +111,106 @@ const CanvasRenderer = ({
     });
   }, [squares]);
   
-  // Filtrar cuadrados con borde (sin imagen)
+  // Filtrar cuadrados con borde (sin imagen) y con imagen
   const borderSquares = squares.filter(square => !square.isTarget);
+  const imageSquares = squares.filter(square => square.isTarget);
+  
+  // Detectar GIFs - estos deben renderizarse en DOM porque canvas no soporta animación de GIFs
+  const isGif = useCallback((url) => {
+    if (!url) return false;
+    const urlLower = url.toLowerCase();
+    return urlLower.endsWith('.gif');
+  }, []);
+  
+  const gifSquares = imageSquares.filter(square => square.imageUrl && isGif(square.imageUrl));
+  const canvasImageSquares = imageSquares.filter(square => !square.imageUrl || !isGif(square.imageUrl));
+  
+  // Inicializar datos de animación para cuadrados con imagen (desde GSAP) - solo los que van en canvas
+  useEffect(() => {
+    canvasImageSquares.forEach(square => {
+      if (!imageSquareDataRef.current.has(square.id)) {
+        imageSquareDataRef.current.set(square.id, {
+          x: 0,
+          y: 0,
+          scale: 0,
+          z: -600,
+          rotation: square.imageRotation ?? 0,
+          opacity: 1,
+          imageUrl: square.imageUrl
+        });
+      } else {
+        // Actualizar imageUrl si cambió
+        const data = imageSquareDataRef.current.get(square.id);
+        if (data.imageUrl !== square.imageUrl) {
+          data.imageUrl = square.imageUrl;
+        }
+      }
+    });
+    
+    // Limpiar cuadros que ya no existen
+    const existingIds = new Set(canvasImageSquares.map(s => s.id));
+    imageSquareDataRef.current.forEach((data, id) => {
+      if (!existingIds.has(id)) {
+        imageSquareDataRef.current.delete(id);
+      }
+    });
+  }, [canvasImageSquares]);
+  
+  // Actualizar datos de animación desde GSAP para cuadrados con imagen (solo canvas)
+  useEffect(() => {
+    const updateImageSquareData = () => {
+      canvasImageSquares.forEach(square => {
+        const el = squareRefs?.current?.[square.id];
+        const data = imageSquareDataRef.current.get(square.id);
+        
+        if (el && data) {
+          // Leer valores de transformación desde GSAP directamente
+          const scale = gsap.getProperty(el, 'scale') || 0;
+          const z = gsap.getProperty(el, 'z') || -600;
+          const opacity = gsap.getProperty(el, 'opacity') !== undefined ? gsap.getProperty(el, 'opacity') : 1;
+          
+          // Leer posición actual desde GSAP (x, y) - GSAP anima desde el centro absoluto (50%, 50%) a la posición final
+          const viewportWidth = window.innerWidth;
+          const viewportHeight = window.innerHeight;
+          
+          // GSAP anima el elemento desde el centro absoluto, así que leer la posición transformada
+          const gsapX = gsap.getProperty(el, 'x') || 0;
+          const gsapY = gsap.getProperty(el, 'y') || 0;
+          
+          // Calcular posición final desde imagePosition (porcentajes)
+          let finalX = viewportWidth / 2; // Por defecto centro
+          let finalY = viewportHeight / 2;
+          
+          if (square.imagePosition) {
+            const xPercent = parseFloat(square.imagePosition.x) || 50;
+            const yPercent = parseFloat(square.imagePosition.y) || 50;
+            finalX = (xPercent / 100) * viewportWidth;
+            finalY = (yPercent / 100) * viewportHeight;
+          }
+          
+          // La posición actual es el centro absoluto + el desplazamiento de GSAP
+          const x = viewportWidth / 2 + gsapX;
+          const y = viewportHeight / 2 + gsapY;
+          
+          // Leer rotación
+          const rotation = square.imageRotation ?? 0;
+          
+          // Actualizar datos
+          data.x = x;
+          data.y = y;
+          data.scale = scale;
+          data.z = z;
+          data.rotation = rotation;
+          data.opacity = opacity;
+        }
+      });
+    };
+    
+    // Actualizar frecuentemente para sincronización suave
+    const interval = setInterval(updateImageSquareData, 16); // ~60fps
+    
+    return () => clearInterval(interval);
+  }, [canvasImageSquares, squareRefs]);
   
   // Inicializar datos de animación para cuadrados con borde (desde GSAP)
   useEffect(() => {
@@ -326,6 +435,96 @@ const CanvasRenderer = ({
     
     ctx.restore();
   }, [calculateColorFromMusic]);
+  
+  // Dibujar un cuadrado con imagen (usando datos de GSAP)
+  const drawImageSquare = useCallback((ctx, square, squareData) => {
+    if (!squareData || !squareData.imageUrl) return;
+    
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    
+    const currentX = squareData.x;
+    const currentY = squareData.y;
+    const currentScale = squareData.scale;
+    const rotation = squareData.rotation;
+    const opacity = squareData.opacity;
+    
+    // Calcular tamaño basado en scale (igual que GSAP: scale de 0 a 1.0)
+    // En DOM: el elemento tiene width: 100% y height: 100%, y la imagen tiene max-width/max-height definidos en variables
+    // El scale se aplica al elemento completo, pero la imagen está limitada por max-width/max-height
+    // Cuando scale = 1.0, la imagen tiene maxViewportSizeForImage de tamaño
+    const isLandscape = viewportWidth > viewportHeight;
+    // Usar valores de variables para mantener consistencia
+    const maxViewportSizeForImage = isLandscape 
+      ? viewportHeight * IMAGE_SIZES.MAX_SIZE_LANDSCAPE 
+      : viewportHeight * IMAGE_SIZES.MAX_SIZE_PORTRAIT;
+    
+    // El tamaño de la imagen es proporcional al scale, limitado por maxViewportSizeForImage
+    // Cuando scale = 1.0, la imagen tiene maxViewportSizeForImage de tamaño
+    const currentSize = maxViewportSizeForImage * currentScale;
+    
+    ctx.save();
+    ctx.globalAlpha = opacity;
+    ctx.translate(currentX, currentY);
+    ctx.rotate((rotation * Math.PI) / 180);
+    
+    // Dibujar imagen
+    const img = imageCacheRef.current.get(squareData.imageUrl);
+    if (img && img.complete && img.naturalWidth > 0 && img.naturalHeight > 0) {
+      // Calcular tamaño manteniendo proporción de la imagen (object-fit: contain)
+      const imgAspectRatio = img.naturalWidth / img.naturalHeight;
+      let imgWidth, imgHeight;
+      
+      // currentSize ya está limitado a maxViewportSizeForImage
+      if (imgAspectRatio > 1) {
+        // Imagen horizontal
+        imgWidth = currentSize;
+        imgHeight = imgWidth / imgAspectRatio;
+      } else {
+        // Imagen vertical
+        imgHeight = currentSize;
+        imgWidth = imgHeight * imgAspectRatio;
+      }
+      
+      // Detectar tipo de imagen para aplicar sombra (JPEG y GIF tienen sombra, PNG no)
+      const imageUrlLower = squareData.imageUrl.toLowerCase();
+      const isJpeg = imageUrlLower.endsWith('.jpg') || imageUrlLower.endsWith('.jpeg');
+      const isGif = imageUrlLower.endsWith('.gif');
+      const shouldHaveShadow = isJpeg || isGif;
+      
+      // Aplicar sombra si es JPEG o GIF - IMPORTANTE: aplicar sombra ANTES de dibujar
+      if (shouldHaveShadow) {
+        // Primera sombra (más grande y difusa)
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
+        ctx.shadowBlur = 12;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 4;
+        ctx.drawImage(img, -imgWidth / 2, -imgHeight / 2, imgWidth, imgHeight);
+        
+        // Segunda sombra (más pequeña y definida)
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+        ctx.shadowBlur = 6;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 2;
+        ctx.drawImage(img, -imgWidth / 2, -imgHeight / 2, imgWidth, imgHeight);
+        
+        // Resetear sombra para el siguiente dibujado
+        ctx.shadowColor = 'transparent';
+        ctx.shadowBlur = 0;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
+      } else {
+        // Sin sombra para PNG (tiene transparencia)
+        ctx.shadowBlur = 0;
+        ctx.shadowColor = 'transparent';
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
+        ctx.drawImage(img, -imgWidth / 2, -imgHeight / 2, imgWidth, imgHeight);
+      }
+    }
+    
+    ctx.restore();
+  }, [imageCacheRef]);
   
   // Calcular progreso de animación para un cuadrado
   const getSquareProgress = useCallback((square) => {
@@ -616,11 +815,19 @@ const CanvasRenderer = ({
         drawDiagonal(ctx, diag, rotation);
       });
       
-      // Dibujar cuadrados con borde (las imágenes se renderizan en DOM, no aquí)
+      // Dibujar cuadrados con borde PRIMERO (detrás)
       borderSquares.forEach(square => {
         const squareData = borderSquareDataRef.current.get(square.id);
         if (squareData && squareData.progress < 1) {
           drawBorderSquare(ctx, square, squareData);
+        }
+      });
+      
+      // Dibujar cuadrados con imagen DESPUÉS (delante de los bordes) - solo los que NO son GIFs
+      canvasImageSquares.forEach(square => {
+        const squareData = imageSquareDataRef.current.get(square.id);
+        if (squareData && squareData.opacity > 0) {
+          drawImageSquare(ctx, square, squareData);
         }
       });
       
@@ -634,7 +841,7 @@ const CanvasRenderer = ({
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [borderSquares, diagonales, drawDiagonal, drawBorderSquare]);
+  }, [borderSquares, canvasImageSquares, diagonales, drawDiagonal, drawBorderSquare, drawImageSquare]);
   
   return (
     <canvas 

@@ -271,8 +271,8 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
           const initialIndices = allIndices.slice(0, Math.min(INITIAL_PRELOAD_COUNT, allIndices.length));
           initialImages = initialIndices.map(idx => {
             const img = imagesList[idx];
-            return typeof img === 'object' ? (img.path || img) : img;
-          });
+          return typeof img === 'object' ? (img.path || img) : img;
+        });
         } else {
           // Para tracks normales: precargar de todas las subcarpetas (no solo la primera)
           const subfolders = Array.from(subfolderImageIndicesRef.current.keys()).filter(sf => sf !== '__all__');
@@ -422,8 +422,8 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
     // Fallback: usar la lógica antigua si no hay segments
     if (!selectedTrack || !selectedTrack.subfolderToAudioIndex) {
       if (selectedTrack?.subfolderOrder && selectedTrack.subfolderOrder.length > 0) {
-        const firstSubfolder = selectedTrack.subfolderOrder[0];
-        return firstSubfolder === '__root__' ? null : firstSubfolder;
+      const firstSubfolder = selectedTrack.subfolderOrder[0];
+      return firstSubfolder === '__root__' ? null : firstSubfolder;
       }
       return null;
     }
@@ -490,23 +490,28 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
         
         if (currentSegment) {
           console.log('[Gallery] Segmento encontrado:', currentSegment);
+          console.log('[Gallery] Subcarpetas del segmento:', currentSegment.subfolders);
+          console.log('[Gallery] Imágenes del segmento (raw):', currentSegment.images.length, currentSegment.images);
           
           // Obtener todas las imágenes del segmento (de todas sus subcarpetas)
           const segmentImagePaths = currentSegment.images.map(img => 
             typeof img === 'object' ? (img.path || img) : img
           );
           
-          console.log('[Gallery] Imágenes del segmento:', segmentImagePaths.length);
+          console.log('[Gallery] Imágenes del segmento (paths):', segmentImagePaths.length, segmentImagePaths.slice(0, 5));
+          console.log('[Gallery] Total imágenes en allImages:', allImages.length);
           
           // Buscar los índices de estas imágenes en allImages
           const segmentIndices = [];
-          segmentImagePaths.forEach(imgPath => {
+          segmentImagePaths.forEach((imgPath, idx) => {
             const index = allImages.findIndex(img => {
               const imgPathToCompare = typeof img === 'object' ? (img.path || img) : img;
               return imgPathToCompare === imgPath;
             });
             if (index >= 0) {
               segmentIndices.push(index);
+            } else {
+              console.warn('[Gallery] No se encontró imagen en allImages:', imgPath, 'índice en segmentImagePaths:', idx);
             }
           });
           
@@ -523,22 +528,23 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
               }
             });
             
-            // Usar la primera subcarpeta del segmento para normalización
-            const firstSubfolder = currentSegment.subfolders && currentSegment.subfolders.length > 0 
-              ? currentSegment.subfolders[0] 
-              : '__root__';
-            const normalizedSubfolder = firstSubfolder === '__root__' ? '__root__' : firstSubfolder;
+            // Usar un identificador único por segmento (audioIndex) para el índice
+            // Esto asegura que cada segmento tenga su propio índice independiente
+            const segmentKey = `segment_${audioIndex}`;
             
             // Actualizar estado con las imágenes del segmento activo
             const segmentImages = segmentIndices.map(idx => allImages[idx]);
             setActiveSegmentImages(segmentImages);
             
             // Resetear índice a 0 para empezar desde el principio del nuevo segmento
-            subfolderCurrentIndexRef.current.set(normalizedSubfolder, 0);
-            currentIndexRef.current = segmentIndices[0];
+            // Usar segmentKey en lugar de normalizedSubfolder para evitar conflictos
+            subfolderCurrentIndexRef.current.set(segmentKey, 0);
+            currentIndexRef.current = segmentIndices[0] || 0;
             
-            // Guardar el normalizedSubfolder en un ref para que getNextImage lo use
-            lastSubfolderRef.current = normalizedSubfolder;
+            // Guardar el segmentKey en un ref para que getNextImage lo use
+            lastSubfolderRef.current = segmentKey;
+            
+            console.log('[Gallery] Segmento', audioIndex, '- Resetear índice a 0,', segmentIndices.length, 'imágenes disponibles');
             
             console.log('[Gallery] Galería actualizada para segmento', audioIndex, '-', segmentIndices.length, 'imágenes listas');
           } else {
@@ -549,51 +555,51 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
         }
       } else {
         // Fallback: lógica original: filtrar por subcarpeta
-        const currentSubfolder = getCurrentSubfolder();
-        const normalizedSubfolder = currentSubfolder === null ? '__root__' : currentSubfolder;
+      const currentSubfolder = getCurrentSubfolder();
+      const normalizedSubfolder = currentSubfolder === null ? '__root__' : currentSubfolder;
         
         console.log('[Gallery] Subcarpeta actual para audio', currentAudioIndex, ':', normalizedSubfolder);
-        
-        // Resetear imágenes y índice cuando se vuelve a una subcarpeta (para poder volver a verlas)
-        if (subfolderImageIndicesRef.current.has(normalizedSubfolder)) {
-          const indices = subfolderImageIndicesRef.current.get(normalizedSubfolder);
-          if (indices.length > 0) {
-            // Resetear todas las imágenes de esta subcarpeta a "ready" para poder volver a mostrarlas
-            indices.forEach(idx => {
-              const imgObj = allImages[idx];
-              const imgPath = typeof imgObj === 'object' ? (imgObj.path || imgObj) : imgObj;
-              const state = imageStatesRef.current.get(imgPath);
-              if (state && state.state === 'used') {
-                imageStatesRef.current.set(imgPath, { ...state, state: 'ready' });
-              }
-            });
-            
-            // Resetear contador de usadas para esta subcarpeta
-            const imageSubfolder = currentSubfolder;
-            if (imageSubfolder !== null && subfolderCountsRef.current.has(imageSubfolder)) {
-              subfolderCountsRef.current.get(imageSubfolder).used = 0;
-            }
-            
-            // Resetear índice a 0 para empezar desde el principio
-            subfolderCurrentIndexRef.current.set(normalizedSubfolder, 0);
-            currentIndexRef.current = indices[0];
-            
-            // Actualizar estado con las imágenes de esta subcarpeta
-            const subfolderImages = indices.map(idx => allImages[idx]);
-            setActiveSegmentImages(subfolderImages);
-          }
-        } else if (currentSubfolder === null) {
-          // Si no hay subcarpeta específica, resetear todas las imágenes
-          setActiveSegmentImages(allImages); // Usar todas las imágenes
-          allImages.forEach((imgObj, idx) => {
+      
+      // Resetear imágenes y índice cuando se vuelve a una subcarpeta (para poder volver a verlas)
+      if (subfolderImageIndicesRef.current.has(normalizedSubfolder)) {
+        const indices = subfolderImageIndicesRef.current.get(normalizedSubfolder);
+        if (indices.length > 0) {
+          // Resetear todas las imágenes de esta subcarpeta a "ready" para poder volver a mostrarlas
+          indices.forEach(idx => {
+            const imgObj = allImages[idx];
             const imgPath = typeof imgObj === 'object' ? (imgObj.path || imgObj) : imgObj;
             const state = imageStatesRef.current.get(imgPath);
             if (state && state.state === 'used') {
               imageStatesRef.current.set(imgPath, { ...state, state: 'ready' });
             }
           });
-          subfolderCurrentIndexRef.current.set('__root__', 0);
-          currentIndexRef.current = 0;
+          
+          // Resetear contador de usadas para esta subcarpeta
+          const imageSubfolder = currentSubfolder;
+          if (imageSubfolder !== null && subfolderCountsRef.current.has(imageSubfolder)) {
+            subfolderCountsRef.current.get(imageSubfolder).used = 0;
+          }
+          
+          // Resetear índice a 0 para empezar desde el principio
+          subfolderCurrentIndexRef.current.set(normalizedSubfolder, 0);
+          currentIndexRef.current = indices[0];
+            
+            // Actualizar estado con las imágenes de esta subcarpeta
+            const subfolderImages = indices.map(idx => allImages[idx]);
+            setActiveSegmentImages(subfolderImages);
+        }
+      } else if (currentSubfolder === null) {
+        // Si no hay subcarpeta específica, resetear todas las imágenes
+          setActiveSegmentImages(allImages); // Usar todas las imágenes
+        allImages.forEach((imgObj, idx) => {
+          const imgPath = typeof imgObj === 'object' ? (imgObj.path || imgObj) : imgObj;
+          const state = imageStatesRef.current.get(imgPath);
+          if (state && state.state === 'used') {
+            imageStatesRef.current.set(imgPath, { ...state, state: 'ready' });
+          }
+        });
+        subfolderCurrentIndexRef.current.set('__root__', 0);
+        currentIndexRef.current = 0;
         }
       }
     }
@@ -666,20 +672,27 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
           }
         });
         
-        // Usar la subcarpeta guardada en lastSubfolderRef
-        normalizedSubfolder = lastSubfolderRef.current || '__root__';
+        // Usar el segmentKey basado en el audioIndex actual (más confiable que lastSubfolderRef)
+        // Esto asegura que siempre usemos el segmentKey correcto para el segmento activo
+        if (currentAudioIndex !== null && currentAudioIndex !== undefined) {
+          normalizedSubfolder = `segment_${currentAudioIndex}`;
+        } else if (lastSubfolderRef.current && lastSubfolderRef.current.startsWith('segment_')) {
+          normalizedSubfolder = lastSubfolderRef.current;
+        } else {
+          normalizedSubfolder = '__root__';
+        }
         
-        console.log('[Gallery] getNextImage - Usando', imageIndices.length, 'imágenes de activeSegmentImages, subcarpeta:', normalizedSubfolder);
+        console.log('[Gallery] getNextImage - Usando', imageIndices.length, 'imágenes de activeSegmentImages, segmentKey:', normalizedSubfolder, 'para audioIndex:', currentAudioIndex);
       } else {
         // Fallback: usar la lógica antigua si activeSegmentImages está vacío
-        const currentSubfolder = getCurrentSubfolder();
-        normalizedSubfolder = currentSubfolder === null ? '__root__' : currentSubfolder;
-        
-        if (subfolderImageIndicesRef.current.has(normalizedSubfolder)) {
-          imageIndices = subfolderImageIndicesRef.current.get(normalizedSubfolder);
-        } else {
+      const currentSubfolder = getCurrentSubfolder();
+      normalizedSubfolder = currentSubfolder === null ? '__root__' : currentSubfolder;
+      
+      if (subfolderImageIndicesRef.current.has(normalizedSubfolder)) {
+        imageIndices = subfolderImageIndicesRef.current.get(normalizedSubfolder);
+      } else {
           imageIndices = subfolderImageIndicesRef.current.get('__all__') || Array.from({ length: allImages.length }, (_, i) => i);
-          normalizedSubfolder = '__all__';
+        normalizedSubfolder = '__all__';
         }
       }
       
@@ -694,11 +707,15 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
     // Obtener índice actual de esta subcarpeta (inicializar si no existe)
     if (!subfolderCurrentIndexRef.current.has(normalizedSubfolder)) {
       subfolderCurrentIndexRef.current.set(normalizedSubfolder, 0);
+      console.log('[Gallery] getNextImage - Inicializando índice 0 para segmentKey:', normalizedSubfolder);
     }
     let subfolderIndex = subfolderCurrentIndexRef.current.get(normalizedSubfolder);
     
+    console.log('[Gallery] getNextImage - Índice actual:', subfolderIndex, 'de', imageIndices.length, 'para segmentKey:', normalizedSubfolder);
+    
     // Asegurarse de que el índice no exceda el número de imágenes disponibles
     if (subfolderIndex >= imageIndices.length) {
+      console.log('[Gallery] getNextImage - Índice', subfolderIndex, 'excede', imageIndices.length, ', reseteando a 0');
       subfolderIndex = 0;
       subfolderCurrentIndexRef.current.set(normalizedSubfolder, 0);
     }
@@ -715,8 +732,8 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
     const targetImageState = imageStatesRef.current.get(targetImagePath);
     
     // Buscar la siguiente imagen lista en esta subcarpeta
-    // IMPORTANTE: Solo devolver imágenes con estado 'ready' (completamente cargadas)
-    // PERMITIR REUTILIZACIÓN: También aceptar imágenes 'used' si no hay suficientes 'ready'
+    // IMPORTANTE: Usar el índice actual directamente si la imagen está lista
+    // Solo buscar circularmente si la imagen en el índice actual no está lista
     let attempts = 0;
     const startIndex = subfolderIndex;
     let foundReady = false;
@@ -726,48 +743,126 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
     let readyImageIndex = -1;
     let usedImageIndex = -1;
     
-    // Primero buscar imágenes 'ready', luego 'used' si no hay suficientes
-    while (attempts < imageIndices.length) {
-      const imageIndex = imageIndices[subfolderIndex];
+    // Primero verificar la imagen en el índice actual
+    const currentImageIndex = imageIndices[subfolderIndex];
+    if (currentImageIndex !== undefined && currentImageIndex >= 0 && currentImageIndex < allImages.length) {
+      const currentImageObj = allImages[currentImageIndex];
+      const currentImagePath = typeof currentImageObj === 'object' ? (currentImageObj.path || currentImageObj) : currentImageObj;
+      const currentImageState = imageStatesRef.current.get(currentImagePath);
+      
+      console.log('[Gallery] getNextImage - Verificando imagen en índice', subfolderIndex, ':', currentImagePath.substring(currentImagePath.lastIndexOf('/') + 1), 'estado:', currentImageState?.state);
+      
+      // Si la imagen en el índice actual está 'ready', usarla directamente
+      if (currentImageState && currentImageState.state === 'ready' && currentImageState.imgElement && currentImageState.imgElement.complete) {
+        foundReady = true;
+        readyImagePath = currentImagePath;
+        readyImageIndex = subfolderIndex;
+        console.log('[Gallery] getNextImage - Imagen en índice', subfolderIndex, 'está ready, usándola');
+      } else if (currentImageState && currentImageState.state === 'used' && currentImageState.imgElement && currentImageState.imgElement.complete) {
+        // Si está 'used', guardarla como fallback pero seguir buscando 'ready'
+        foundUsed = true;
+        usedImagePath = currentImagePath;
+        usedImageIndex = subfolderIndex;
+        console.log('[Gallery] getNextImage - Imagen en índice', subfolderIndex, 'está used, guardando como fallback');
+      } else {
+        console.log('[Gallery] getNextImage - Imagen en índice', subfolderIndex, 'no está lista (estado:', currentImageState?.state, ', complete:', currentImageState?.imgElement?.complete, ')');
+      }
+    } else {
+      console.warn('[Gallery] getNextImage - Índice', subfolderIndex, 'inválido o fuera de rango');
+    }
+    
+    // Si no encontramos 'ready' en el índice actual, buscar circularmente
+    if (!foundReady) {
+      let searchIndex = (subfolderIndex + 1) % imageIndices.length;
+      while (attempts < imageIndices.length - 1 && searchIndex !== subfolderIndex) {
+        const imageIndex = imageIndices[searchIndex];
+        if (imageIndex !== undefined && imageIndex >= 0 && imageIndex < allImages.length) {
       const imageObj = allImages[imageIndex];
       const imagePath = typeof imageObj === 'object' ? (imageObj.path || imageObj) : imageObj;
       const imageState = imageStatesRef.current.get(imagePath);
       
-      // Priorizar imágenes 'ready' completamente cargadas
-      if (!foundReady && imageState && imageState.state === 'ready' && imageState.imgElement && imageState.imgElement.complete) {
-        foundReady = true;
-        readyImagePath = imagePath;
-        readyImageIndex = subfolderIndex;
-        break; // Encontrar la primera 'ready' y usarla
+          // Priorizar imágenes 'ready' completamente cargadas
+          if (!foundReady && imageState && imageState.state === 'ready' && imageState.imgElement && imageState.imgElement.complete) {
+            foundReady = true;
+            readyImagePath = imagePath;
+            readyImageIndex = searchIndex;
+            break; // Encontrar la primera 'ready' y usarla
+          }
+          
+          // Si no hay 'ready', buscar 'used' como fallback (permitir reutilización)
+          if (!foundUsed && imageState && imageState.state === 'used' && imageState.imgElement && imageState.imgElement.complete) {
+            foundUsed = true;
+            usedImagePath = imagePath;
+            usedImageIndex = searchIndex;
+          }
+        }
+        
+        searchIndex = (searchIndex + 1) % imageIndices.length;
+        attempts++;
       }
-      
-      // Si no hay 'ready', buscar 'used' como fallback (permitir reutilización)
-      if (!foundUsed && imageState && imageState.state === 'used' && imageState.imgElement && imageState.imgElement.complete) {
-        foundUsed = true;
-        usedImagePath = imagePath;
-        usedImageIndex = subfolderIndex;
-      }
-      
-      subfolderIndex = (subfolderIndex + 1) % imageIndices.length;
-      attempts++;
     }
     
     // Usar imagen 'ready' si está disponible, sino usar 'used' (reutilizar)
+    // IMPORTANTE: SIEMPRE usar la imagen en el índice actual si está disponible (ready o used)
+    // Solo buscar circularmente si la imagen actual NO está disponible
     let imagePath = null;
     let imageState = null;
     let imageSubfolder = null;
+    let actualUsedIndex = subfolderIndex; // Índice que realmente usamos (puede cambiar si la imagen actual no está lista)
     
-    if (foundReady) {
+    // Priorizar SIEMPRE la imagen en el índice actual si está disponible
+    const currentIdx = imageIndices[subfolderIndex];
+    if (currentIdx !== undefined && currentIdx >= 0 && currentIdx < allImages.length) {
+      const currentImgObj = allImages[currentIdx];
+      const currentImgPath = typeof currentImgObj === 'object' ? (currentImgObj.path || currentImgObj) : currentImgObj;
+      const currentImgState = imageStatesRef.current.get(currentImgPath);
+      
+      if (currentImgState && currentImgState.state === 'ready' && currentImgState.imgElement && currentImgState.imgElement.complete) {
+        // Usar la imagen en el índice actual directamente
+        imagePath = currentImgPath;
+        imageState = currentImgState;
+        actualUsedIndex = subfolderIndex; // Mantener el índice actual
+        console.log('[Gallery] getNextImage - Usando imagen en índice actual', subfolderIndex, 'de', imageIndices.length, ':', imagePath.substring(imagePath.lastIndexOf('/') + 1));
+      } else if (currentImgState && currentImgState.state === 'used' && currentImgState.imgElement && currentImgState.imgElement.complete) {
+        // Si está 'used', también usarla (reutilizar)
+        imagePath = currentImgPath;
+        imageState = currentImgState;
+        actualUsedIndex = subfolderIndex; // Mantener el índice actual
+        // Marcar como 'ready' para que pueda ser reutilizada
+        imageStatesRef.current.set(imagePath, { ...imageState, state: 'ready' });
+        console.log('[Gallery] getNextImage - Reutilizando imagen used en índice actual', subfolderIndex, 'de', imageIndices.length, ':', imagePath.substring(imagePath.lastIndexOf('/') + 1));
+      } else if (foundReady) {
+        // Si la imagen actual no está lista, usar la primera 'ready' encontrada en la búsqueda circular
+        actualUsedIndex = readyImageIndex;
+        subfolderIndex = readyImageIndex; // Actualizar subfolderIndex para avanzar desde aquí
+        imagePath = readyImagePath;
+        imageState = imageStatesRef.current.get(imagePath);
+        console.log('[Gallery] getNextImage - Imagen actual no lista, usando ready en índice', subfolderIndex, 'de', imageIndices.length, ':', imagePath.substring(imagePath.lastIndexOf('/') + 1));
+      } else if (foundUsed) {
+        // Reutilizar imagen 'used' si no hay 'ready' disponibles
+        actualUsedIndex = usedImageIndex;
+        subfolderIndex = usedImageIndex; // Actualizar subfolderIndex para avanzar desde aquí
+        imagePath = usedImagePath;
+        imageState = imageStatesRef.current.get(imagePath);
+        console.log('[Gallery] getNextImage - Reutilizando imagen used en índice', subfolderIndex, 'de', imageIndices.length, ':', imagePath.substring(imagePath.lastIndexOf('/') + 1));
+        // Marcar como 'ready' para que pueda ser reutilizada
+        if (imageState) {
+          imageStatesRef.current.set(imagePath, { ...imageState, state: 'ready' });
+        }
+      }
+    } else if (foundReady) {
+      actualUsedIndex = readyImageIndex;
       subfolderIndex = readyImageIndex;
       imagePath = readyImagePath;
       imageState = imageStatesRef.current.get(imagePath);
-      console.log('[Gallery] getNextImage - Usando imagen ready:', imagePath.substring(imagePath.lastIndexOf('/') + 1));
+      console.log('[Gallery] getNextImage - Usando imagen ready en índice', subfolderIndex, 'de', imageIndices.length, ':', imagePath.substring(imagePath.lastIndexOf('/') + 1));
     } else if (foundUsed) {
       // Reutilizar imagen 'used' si no hay 'ready' disponibles
+      actualUsedIndex = usedImageIndex;
       subfolderIndex = usedImageIndex;
       imagePath = usedImagePath;
       imageState = imageStatesRef.current.get(imagePath);
-      console.log('[Gallery] getNextImage - Reutilizando imagen used:', imagePath.substring(imagePath.lastIndexOf('/') + 1));
+      console.log('[Gallery] getNextImage - Reutilizando imagen used en índice', subfolderIndex, 'de', imageIndices.length, ':', imagePath.substring(imagePath.lastIndexOf('/') + 1));
       // Marcar como 'ready' para que pueda ser reutilizada
       if (imageState) {
         imageStatesRef.current.set(imagePath, { ...imageState, state: 'ready' });
@@ -789,170 +884,97 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
     
     if (imagePath && imageState) {
       imageSubfolder = imagesBySubfolderRef.current.get(imagePath);
-      const previousSubfolder = lastSubfolderRef.current;
-      
+        const previousSubfolder = lastSubfolderRef.current;
+        
       // NO marcar como 'used' - mantener como 'ready' para permitir reutilización continua
       // Esto permite que las imágenes se distribuyan mejor en el tiempo
-      
+        
       // Actualizar contador (solo para tracking, no para bloquear reutilización)
-      if (imageSubfolder !== null && subfolderCountsRef.current.has(imageSubfolder)) {
-        const counts = subfolderCountsRef.current.get(imageSubfolder);
-        counts.used++;
-      }
-      
-      // Identificar si esta imagen pertenece al último tramo
-      const normalizedImageSubfolder = imageSubfolder === null ? '__root__' : imageSubfolder;
-      let isLastSubfolder = false;
-      if (selectedTrack && selectedTrack.subfolderOrder && selectedTrack.subfolderOrder.length > 0) {
-        const lastSubfolderInOrder = selectedTrack.subfolderOrder[selectedTrack.subfolderOrder.length - 1];
-        isLastSubfolder = normalizedImageSubfolder === lastSubfolderInOrder;
-      } else if (selectedTrack && (!selectedTrack.subfolderOrder || selectedTrack.subfolderOrder.length === 0)) {
-        // Si no hay subfolderOrder definido, asumir que es un solo tramo
-        isLastSubfolder = true;
-      }
-      
-      // Verificar si esta es la última imagen de esta subcarpeta (antes de incrementar el índice)
-      const isLastImageInSubfolder = subfolderIndex === imageIndices.length - 1;
-      
-      // Verificar si se completó la subcarpeta anterior
-      if (previousSubfolder !== null && 
-          previousSubfolder !== imageSubfolder &&
-          !completedSubfoldersRef.current.has(previousSubfolder)) {
-        
-        let actuallyUsedCount = 0;
-        imagesBySubfolderRef.current.forEach((subfolder, path) => {
-          if (subfolder === previousSubfolder) {
-            const state = imageStatesRef.current.get(path);
-            if (state && state.state === 'used') {
-              actuallyUsedCount++;
-            }
-          }
-        });
-        
-        const prevCounts = subfolderCountsRef.current.get(previousSubfolder);
-        if (actuallyUsedCount >= prevCounts.total && prevCounts.total > 0) {
-          completedSubfoldersRef.current.add(previousSubfolder);
-          if (onSubfolderComplete) {
-            onSubfolderComplete(previousSubfolder);
-          }
+        if (imageSubfolder !== null && subfolderCountsRef.current.has(imageSubfolder)) {
+          const counts = subfolderCountsRef.current.get(imageSubfolder);
+          counts.used++;
         }
-      }
-      
-      lastSubfolderRef.current = imageSubfolder;
-      
-      // Guardar índice ANTES de avanzar (para poder retornar la imagen)
-      const currentImageIndex = subfolderIndex;
-      
-      // Avanzar índice de esta subcarpeta
-      subfolderIndex++;
-      let subfolderCompletedCycle = false;
-      if (subfolderIndex >= imageIndices.length) {
-        // Cuando se completa el ciclo (índice vuelve a 0), verificar si es la última vez
-        // Para Nachitos de Nochevieja (isCroquetas25), solo marcar como última cuando realmente se hayan usado todas las imágenes
-        if (isCroquetas25) {
-          // Para Nachitos de Nochevieja: verificar si todas las imágenes han sido mostradas al menos una vez
-          // Como ahora no marcamos como 'used', verificamos si todas han sido accedidas
-          // Usamos el contador 'used' para saber cuántas veces se han mostrado
-          let allImagesShown = true;
-          const totalImages = imageIndices.length;
-          let imagesShownCount = 0;
-          for (let i = 0; i < imageIndices.length; i++) {
-            const imgObj = allImages[imageIndices[i]];
-            const imgPath = typeof imgObj === 'object' ? (imgObj.path || imgObj) : imgObj;
-            const state = imageStatesRef.current.get(imgPath);
-            // Verificar si la imagen ha sido mostrada al menos una vez (contador > 0 o estado ready/used)
-            if (state && (state.state === 'ready' || state.state === 'used')) {
-              imagesShownCount++;
-            }
-          }
-          // Considerar que todas se han mostrado si al menos el 80% han sido accedidas
-          allImagesShown = imagesShownCount >= (totalImages * 0.8);
+        
+        // Identificar si esta imagen pertenece al último tramo
+        const normalizedImageSubfolder = imageSubfolder === null ? '__root__' : imageSubfolder;
+        let isLastSubfolder = false;
+        if (selectedTrack && selectedTrack.subfolderOrder && selectedTrack.subfolderOrder.length > 0) {
+          const lastSubfolderInOrder = selectedTrack.subfolderOrder[selectedTrack.subfolderOrder.length - 1];
+          isLastSubfolder = normalizedImageSubfolder === lastSubfolderInOrder;
+        } else if (selectedTrack && (!selectedTrack.subfolderOrder || selectedTrack.subfolderOrder.length === 0)) {
+          // Si no hay subfolderOrder definido, asumir que es un solo tramo
+          isLastSubfolder = true;
+        }
+        
+        // Verificar si esta es la última imagen de esta subcarpeta (antes de incrementar el índice)
+        const isLastImageInSubfolder = subfolderIndex === imageIndices.length - 1;
+        
+      // Verificar si se completó la subcarpeta anterior (solo si no estamos usando segmentKey)
+      // Si estamos usando segmentKey, no necesitamos verificar subcarpetas individuales
+      if (!normalizedSubfolder.startsWith('segment_') && 
+          previousSubfolder !== null && 
+            previousSubfolder !== imageSubfolder &&
+            !completedSubfoldersRef.current.has(previousSubfolder)) {
           
-          if (allImagesShown) {
-            // Todas las imágenes han sido usadas, marcar la próxima como última
-            subfolderIndex = imageIndices.length; // Mantener en el final
-            subfolderCurrentIndexRef.current.set(normalizedSubfolder, subfolderIndex);
-            currentIndexRef.current = imageIndices[0] || 0;
-            isLastImageRef.current = true;
-            // Retornar la imagen actual
-            return imagePath;
-          } else {
-            // Aún hay imágenes sin mostrar, buscar la siguiente imagen 'ready' o 'used' sin resetear
-            // Buscar desde el principio del array
-            let foundNextImage = false;
-            let nextImageIndex = -1;
-            
-            for (let i = 0; i < imageIndices.length; i++) {
-              const imgObj = allImages[imageIndices[i]];
-              const imgPath = typeof imgObj === 'object' ? (imgObj.path || imgObj) : imgObj;
-              const state = imageStatesRef.current.get(imgPath);
-              // Aceptar imágenes 'ready' o 'used' (permitir reutilización)
-              if (state && (state.state === 'ready' || state.state === 'used') && state.imgElement && state.imgElement.complete) {
-                foundNextImage = true;
-                nextImageIndex = i;
-                break;
+          let actuallyUsedCount = 0;
+          imagesBySubfolderRef.current.forEach((subfolder, path) => {
+            if (subfolder === previousSubfolder) {
+              const state = imageStatesRef.current.get(path);
+              if (state && state.state === 'used') {
+                actuallyUsedCount++;
               }
             }
-            
-            if (foundNextImage) {
-              // Hay una imagen disponible, reiniciar el bucle desde este índice
-              subfolderIndex = nextImageIndex;
-              subfolderCurrentIndexRef.current.set(normalizedSubfolder, nextImageIndex);
-              // Retornar la imagen actual
-              subfolderCompletedCycle = true;
-              return imagePath;
-            } else {
-              // No hay imágenes disponibles, resetear índice para empezar de nuevo
-              subfolderIndex = 0;
-              subfolderCurrentIndexRef.current.set(normalizedSubfolder, 0);
-              subfolderCompletedCycle = true;
-              // Retornar la imagen actual
-              return imagePath;
-            }
-          }
-        } else if (!isLastSubfolder) {
-          // Para tracks normales: resetear si NO es el último tramo
-          subfolderImageIndicesRef.current.get(normalizedImageSubfolder)?.forEach(idx => {
-            const imgObj = allImages[idx];
-            const imgPath = typeof imgObj === 'object' ? (imgObj.path || imgObj) : imgObj;
-            const state = imageStatesRef.current.get(imgPath);
-            if (state && state.state === 'used') {
-              imageStatesRef.current.set(imgPath, { ...state, state: 'ready' });
-            }
           });
-          if (imageSubfolder !== null && subfolderCountsRef.current.has(imageSubfolder)) {
-            subfolderCountsRef.current.get(imageSubfolder).used = 0;
-          }
-          subfolderIndex = 0;
-          subfolderCompletedCycle = true;
           
-          // Marcar esta subcarpeta como completada al menos una vez
-          subfoldersCompletedAtLeastOnceRef.current.add(normalizedImageSubfolder);
-        } else {
-          // Si es el último tramo y llegamos al final, marcar que la próxima imagen será la última
-          subfolderIndex = imageIndices.length; // Mantener en el final para evitar más iteraciones
-          // Guardar índice antes de salir
-          subfolderCurrentIndexRef.current.set(normalizedSubfolder, subfolderIndex);
-          currentIndexRef.current = imageIndices[0] || 0;
-          // Marcar que la próxima imagen será la última
-          isLastImageRef.current = true;
-          // NO llamar a onAllComplete aquí, se llamará en el onComplete de la animación de la imagen
-          return imagePath;
+          const prevCounts = subfolderCountsRef.current.get(previousSubfolder);
+          if (actuallyUsedCount >= prevCounts.total && prevCounts.total > 0) {
+            completedSubfoldersRef.current.add(previousSubfolder);
+            if (onSubfolderComplete) {
+              onSubfolderComplete(previousSubfolder);
+            }
+          }
         }
+        
+      // NO actualizar lastSubfolderRef aquí cuando usamos segmentKey - se actualiza cuando cambia el segmento
+      // Solo actualizar si no estamos usando segmentKey (para compatibilidad con lógica antigua)
+      if (!normalizedSubfolder.startsWith('segment_')) {
+        lastSubfolderRef.current = imageSubfolder;
+      }
+        
+        // Guardar índice ANTES de avanzar (para poder retornar la imagen)
+        // Usar actualUsedIndex para asegurar que avanzamos desde el índice correcto
+        const currentImageIndex = actualUsedIndex;
+        
+      // Avanzar índice de esta subcarpeta para la próxima vez
+        // Avanzar desde el índice que realmente usamos
+        subfolderIndex = (actualUsedIndex + 1) % imageIndices.length; // Ciclo circular directo
+        let subfolderCompletedCycle = false;
+      
+      console.log('[Gallery] getNextImage - Avanzando índice de', currentImageIndex, 'a', subfolderIndex, 'de', imageIndices.length, 'para segmentKey:', normalizedSubfolder);
+      
+      // Ya aplicamos el ciclo circular arriba con %, así que esto no debería ser necesario
+      // Pero lo dejamos como seguridad
+      if (subfolderIndex >= imageIndices.length) {
+        subfolderIndex = subfolderIndex % imageIndices.length;
+        console.log('[Gallery] getNextImage - Índice excede array, ciclando a', subfolderIndex);
       }
       
-      // Guardar índice actualizado ANTES de verificar completitud
+      // Guardar índice actualizado (ahora con ciclo circular)
       subfolderCurrentIndexRef.current.set(normalizedSubfolder, subfolderIndex);
       currentIndexRef.current = imageIndices[subfolderIndex] || imageIndices[0] || 0;
+      console.log('[Gallery] getNextImage - Guardado índice', subfolderIndex, 'para segmentKey:', normalizedSubfolder, 'próxima imagen será índice', subfolderIndex, 'de', imageIndices.length);
       
-      // NO llamar a onAllComplete aquí - solo se debe llamar cuando se muestre la última imagen
-      // La verificación de todas las subcarpetas completadas puede ocurrir antes de mostrar todas las imágenes
-      // onAllComplete se llamará en el onComplete de la animación de la última imagen (cuando isLastImageRef.current es true)
-      
-      // Retornar la imagen (el flag isLastImageRef se mantiene hasta que se use)
+      // Retornar la imagen (el ciclo circular permite reutilizar imágenes)
       return imagePath;
-    }
-    
+        
+        // NO llamar a onAllComplete aquí - solo se debe llamar cuando se muestre la última imagen
+        // La verificación de todas las subcarpetas completadas puede ocurrir antes de mostrar todas las imágenes
+        // onAllComplete se llamará en el onComplete de la animación de la última imagen (cuando isLastImageRef.current es true)
+        
+        // Retornar la imagen (el flag isLastImageRef se mantiene hasta que se use)
+        return imagePath;
+      }
+
     // Si no se encontró ninguna imagen (ni 'ready' ni 'used'), devolver null
     subfolderCurrentIndexRef.current.set(normalizedSubfolder, subfolderIndex);
     return null;
@@ -996,14 +1018,14 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
 
     // Pre-cargar las imágenes pendientes sin setTimeout - usar estado y efectos
     imagesToPreload.forEach((imagePath) => {
-      const imageState = imageStatesRef.current.get(imagePath);
-      if (imageState && imageState.state === 'pending') {
-        preloadImage(imagePath);
-      }
+        const imageState = imageStatesRef.current.get(imagePath);
+        if (imageState && imageState.state === 'pending') {
+          preloadImage(imagePath);
+        }
     });
-    
+
     // Marcar como no precargando - esto se manejará automáticamente cuando las imágenes cambien de estado
-    preloadingRef.current = false;
+      preloadingRef.current = false;
   }, [allImages, preloadImage, getCurrentSubfolder]);
   
   // Función para hacer seek a una posición de imagen usando tiempos auxiliares

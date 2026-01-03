@@ -1,0 +1,22 @@
+:root {
+  // Variables existentes
+  --laser-color: #00ffff;
+  --laser-opacity: 0.5;
+  --perspective: 100vw;
+  --square-rotate-x: 0deg;
+  --square-rotate-y: 0deg;
+  --stroke-base-width: 0.3vw;
+  --stroke-factor-square-normal: 1;
+  --stroke-factor-square-image: 0;
+  --stroke-factor-diagonal-normal: 1;
+  --stroke-factor-diagonal-fixed: 1;
+  
+  // Tamaños de imágenes escupidas
+  --image-max-size-portrait: 85dvh; // Tamaño máximo en orientación portrait
+  --image-max-size-landscape: 85dvh; // Tamaño máximo en orientación landscape
+  
+  // Multiplicadores para cálculo en JavaScript (como porcentaje del viewport height)
+  --image-size-multiplier-portrait: 0.85; // 85% del viewport height en portrait
+  --image-size-multiplier-landscape: 0.85; // 102% del viewport height en landscape
+}
+

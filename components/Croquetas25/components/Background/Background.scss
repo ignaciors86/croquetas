@@ -1,15 +1,4 @@
-:root {
-  --laser-color: #00ffff;
-  --laser-opacity: 0.5;
-  --perspective: 100vw;
-  --square-rotate-x: 0deg;
-  --square-rotate-y: 0deg;
-  --stroke-base-width: 0.3vw;
-  --stroke-factor-square-normal: 1;
-  --stroke-factor-square-image: 0;
-  --stroke-factor-diagonal-normal: 1;
-  --stroke-factor-diagonal-fixed: 1;
-}
+@import './variables.scss';
 
 * {
   box-sizing: border-box;
@@ -101,8 +90,8 @@
     .background__squareImage {
       width: auto;
       height: auto;
-      max-width: 100dvh;
-      max-height: 100dvh;
+      max-width: var(--image-max-size-portrait);
+      max-height: var(--image-max-size-portrait);
       object-fit: contain;
       display: block;
       position: absolute;
@@ -116,9 +105,9 @@
       }
       
       @media (orientation: landscape) {
-        // En landscape, aumentar tamaño a 120% del viewport height
-        max-width: 120dvh;
-        max-height: 120dvh;
+        // En landscape, usar tamaño máximo para landscape
+        max-width: var(--image-max-size-landscape);
+        max-height: var(--image-max-size-landscape);
       }
     }
   }

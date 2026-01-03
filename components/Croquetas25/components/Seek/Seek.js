@@ -205,7 +205,7 @@ const Seek = ({ squares, seekToImagePosition, selectedTrack, audioRef, currentAu
         // Fallback: solo hacer seek si no hay función
         const audio = audioRef.current;
         if (audio && audio.readyState >= 2) {
-          audio.currentTime = targetTime;
+        audio.currentTime = targetTime;
         }
       }
       
@@ -229,7 +229,7 @@ const Seek = ({ squares, seekToImagePosition, selectedTrack, audioRef, currentAu
       if (setCurrentAudioIndex) {
         setCurrentAudioIndex(currentAudioIndex, targetTime);
       } else {
-        audio.currentTime = targetTime;
+      audio.currentTime = targetTime;
       }
     }
   };

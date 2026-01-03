@@ -204,27 +204,32 @@ export const useTracks = () => {
           }
 
           // Asociar subcarpetas de imágenes y guiones a los tramos
-          // Si una subcarpeta no tiene audio, se asocia al último tramo creado
+          // Si una subcarpeta no tiene audio, se asocia al último tramo que apareció ANTES de ella en el orden
+          let lastSegmentIndex = -1; // Índice del último tramo encontrado hasta ahora
+          
           subfolderOrder.forEach(subfolder => {
-            if (!subfolderToAudioIndex.hasOwnProperty(subfolder)) {
-              // Subcarpeta sin audio propio: asociar al último tramo
-              if (currentSegmentAudioIndex >= 0 && segments.length > 0) {
-                subfolderToAudioIndex[subfolder] = currentSegmentAudioIndex;
-                const lastSegment = segments[segments.length - 1];
-                if (!lastSegment.subfolders.includes(subfolder)) {
-                  lastSegment.subfolders.push(subfolder);
-                }
-              } else if (segments.length > 0) {
-                // Si no hay tramo actual, usar el primero
-                subfolderToAudioIndex[subfolder] = 0;
-                segments[0].subfolders.push(subfolder);
-              }
-            } else {
-              // Subcarpeta con audio: ya está en su tramo
+            if (subfolderToAudioIndex.hasOwnProperty(subfolder)) {
+              // Subcarpeta con audio: ya está en su tramo, actualizar lastSegmentIndex
               const segmentIndex = subfolderToAudioIndex[subfolder];
+              lastSegmentIndex = segmentIndex;
+              
               const segment = segments.find(s => s.audioIndex === segmentIndex);
               if (segment && !segment.subfolders.includes(subfolder)) {
                 segment.subfolders.push(subfolder);
+              }
+            } else {
+              // Subcarpeta sin audio: asociar al último tramo que apareció antes de ella
+              if (lastSegmentIndex >= 0) {
+                // Hay un tramo previo: asociar a ese
+                subfolderToAudioIndex[subfolder] = lastSegmentIndex;
+                const segment = segments.find(s => s.audioIndex === lastSegmentIndex);
+                if (segment && !segment.subfolders.includes(subfolder)) {
+                  segment.subfolders.push(subfolder);
+                }
+              } else if (segments.length > 0) {
+                // No hay tramo previo: usar el primero (puede pasar si la primera subcarpeta no tiene audio)
+                subfolderToAudioIndex[subfolder] = 0;
+                segments[0].subfolders.push(subfolder);
               }
             }
           });
@@ -272,7 +277,8 @@ export const useTracks = () => {
             subfolderToAudioIndex: subfolderToAudioIndex,
             guionesBySubfolder: guionesBySubfolder,
             guion: track.guionesBySubfolder.get('__root__')?.[0]?.path || null,
-            isCroquetas25: isCroquetas25
+            isCroquetas25: isCroquetas25,
+            segments: segments // Agregar los segments al finalTrack
           };
 
           finalTracks.push(finalTrack);

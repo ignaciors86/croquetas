@@ -1,5 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
+import { flushSync } from 'react-dom';
 import gsap from 'gsap';
+import { IMAGE_SIZES } from './variables';
 import './Background.scss';
 import Diagonales from './components/Diagonales/Diagonales';
 import CanvasRenderer from './components/CanvasRenderer/CanvasRenderer';
@@ -350,13 +352,13 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
             if (squareRefs.current[square.id]) {
               const el = squareRefs.current[square.id];
               if (el) {
-                const img = el.querySelector(`.${MAINCLASS}__squareImage`);
-                if (img) {
-                  img.src = '';
-                  img.remove();
-                }
+              const img = el.querySelector(`.${MAINCLASS}__squareImage`);
+              if (img) {
+                img.src = '';
+                // NO eliminar img del DOM - React lo hará automáticamente
               }
-              delete squareRefs.current[square.id];
+            }
+            delete squareRefs.current[square.id];
             }
           });
           newSquares = newSquares.slice(0, MAX_SQUARES);
@@ -397,16 +399,30 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
           animationTimelinesRef.current[square.id] = timeline;
           
           const cleanupSquare = () => {
+            // Matar la animación primero
+            if (animationTimelinesRef.current[square.id]) {
+              animationTimelinesRef.current[square.id].kill();
+              delete animationTimelinesRef.current[square.id];
+            }
+            
+            // Limpiar imagen si existe (solo limpiar src, no eliminar del DOM)
             if (el) {
               const img = el.querySelector(`.${MAINCLASS}__squareImage`);
               if (img) {
                 img.src = '';
-                img.remove();
+                // NO eliminar img del DOM - React lo hará automáticamente
               }
+              // NO eliminar el div del DOM - React lo hará automáticamente cuando lo removamos del estado
             }
+            
+            // Limpiar referencias
             delete squareRefs.current[square.id];
-            delete animationTimelinesRef.current[square.id];
-            setSquares(prev => prev.filter(s => s.id !== square.id));
+            
+            // Eliminar del estado usando flushSync para sincronizar con React
+            // Esto evita conflictos entre GSAP y React al manipular el DOM
+            flushSync(() => {
+              setSquares(prev => prev.filter(s => s.id !== square.id));
+            });
           };
           
           if (isTarget) {
@@ -425,6 +441,22 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
             const zTotal = zEnd - zStart;
             const zProgressToScale1 = (zAtScale1 - zStart) / zTotal;
             
+            // Calcular posición final desde imagePosition (porcentajes)
+            const viewportWidth = window.innerWidth;
+            const viewportHeight = window.innerHeight;
+            let finalX = 0;
+            let finalY = 0;
+            
+            if (square.imagePosition) {
+              const xPercent = parseFloat(square.imagePosition.x) || 50;
+              const yPercent = parseFloat(square.imagePosition.y) || 50;
+              finalX = (xPercent / 100) * viewportWidth - viewportWidth / 2; // Desplazamiento desde el centro
+              finalY = (yPercent / 100) * viewportHeight - viewportHeight / 2;
+            }
+            
+            // Inicializar posición en el centro absoluto (0, 0 en transform)
+            gsap.set(el, { x: 0, y: 0 });
+            
             if (isCroquetas25) {
               // Para Nachitos de Nochevieja: animación continua sin detención, directamente al fade out
               const fadeStartProgress = 0.7; // Empezar fade out al 70% de la animación
@@ -433,11 +465,15 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
                 { 
                   scale: 0, 
                   z: zStart,
+                  x: 0, // Empezar en el centro absoluto
+                  y: 0,
                   opacity: 1
                 },
                 {
                   scale: scaleAt1,
                   z: zEnd,
+                  x: finalX, // Mover a la posición final
+                  y: finalY,
                   opacity: 1,
                   duration: duration,
                   ease: 'power1.out',
@@ -492,11 +528,15 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
                 { 
                   scale: 0, 
                   z: zStart,
+                  x: 0, // Empezar en el centro absoluto
+                  y: 0,
                   opacity: 1
                 },
                 {
                   scale: scaleAt1,
                   z: zAtScale1,
+                  x: finalX, // Mover a la posición final
+                  y: finalY,
                   opacity: 1,
                   duration: timeToScale1,
                   ease: 'power1.out',
@@ -508,6 +548,8 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
                 opacity: 0,
                 scale: 0.95,
                 z: 100,
+                x: finalX, // Mantener posición durante fade out
+                y: finalY,
                 duration: fadeOutDuration,
                 ease: 'power2.in',
                 force3D: true,
@@ -537,9 +579,8 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
                     cleanupSquare();
                   }
                 } else {
-                  // Esperar más tiempo antes de limpiar para asegurar que el fade termine completamente
-                  // El fadeOutDuration ya es parte de la animación, pero añadimos un pequeño delay extra
-                  setTimeout(cleanupSquare, 200);
+                  // Limpiar inmediatamente cuando termine la animación
+                  cleanupSquare();
                 }
               }
             });
@@ -672,7 +713,7 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
                   gsap.set(el, { opacity: Math.max(0, finalOpacity) });
                 },
                 onComplete: () => {
-                  setTimeout(cleanupSquare, 200);
+                  cleanupSquare();
                 }
               }
             );
@@ -687,11 +728,17 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
                 img.src = '';
                 img.remove();
               }
+              // NO eliminar el div del DOM - React lo hará automáticamente cuando lo removamos del estado
             }
             delete squareRefs.current[square.id];
           }
-          delete animationTimelinesRef.current[square.id];
-          setSquares(prev => prev.filter(s => s.id !== square.id));
+          if (animationTimelinesRef.current[square.id]) {
+            animationTimelinesRef.current[square.id].kill();
+            delete animationTimelinesRef.current[square.id];
+          }
+          flushSync(() => {
+            setSquares(prev => prev.filter(s => s.id !== square.id));
+          });
         }
       }
     });
@@ -709,13 +756,16 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
           const img = el.querySelector(`.${MAINCLASS}__squareImage`);
           if (img) {
             img.src = '';
-            img.remove();
+            // NO eliminar img del DOM - React lo hará automáticamente
           }
+          // NO eliminar el div del DOM - React lo hará automáticamente
         }
       });
       squareRefs.current = {};
       
-      setSquares([]);
+      flushSync(() => {
+        setSquares([]);
+      });
     };
   }, [selectedTrack]);
 
@@ -749,13 +799,14 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
               delete animationTimelinesRef.current[square.id];
             }
             
-            // Limpiar imagen
+            // Limpiar imagen (solo limpiar src, no eliminar del DOM)
             const img = el.querySelector(`.${MAINCLASS}__squareImage`);
             if (img) {
               img.src = '';
-              img.remove();
+              // NO eliminar img del DOM - React lo hará automáticamente
             }
             
+            // NO eliminar el div del DOM - React lo hará automáticamente cuando lo removamos del estado
             delete squareRefs.current[square.id];
             return false;
           }
@@ -778,8 +829,9 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
                 const img = el.querySelector(`.${MAINCLASS}__squareImage`);
                 if (img) {
                   img.src = '';
-                  img.remove();
+                  // NO eliminar img del DOM - React lo hará automáticamente
                 }
+                // NO eliminar el div del DOM - React lo hará automáticamente cuando lo removamos del estado
               }
               delete squareRefs.current[square.id];
             }
@@ -805,15 +857,16 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
       />
         {/* Canvas unificado para cuadrados con borde */}
         {!showOnlyDiagonales && (
-          <CanvasRenderer
-            squares={squares}
-            diagonales={[]} // Las diagonales se renderizan en DOM por Diagonales
-            analyserRef={analyserRef}
-            dataArrayRef={dataArrayRef}
-            selectedTrack={selectedTrack}
-            animationTimelinesRef={animationTimelinesRef}
-            diagonalRotationsRef={null} // Por ahora null, las diagonales se renderizan en DOM
-          />
+        <CanvasRenderer
+          squares={squares}
+          diagonales={[]} // Las diagonales se renderizan en DOM por Diagonales
+          analyserRef={analyserRef}
+          dataArrayRef={dataArrayRef}
+          selectedTrack={selectedTrack}
+          animationTimelinesRef={animationTimelinesRef}
+          diagonalRotationsRef={null} // Por ahora null, las diagonales se renderizan en DOM
+          squareRefs={squareRefs} // Pasar squareRefs para leer valores de GSAP
+        />
         )}
       {/* Blur overlay permanente sobre las diagonales - backdrop-filter difumina lo que está detrás */}
       <div className={`${MAINCLASS}__blurOverlay`} />
@@ -835,36 +888,63 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
         }
         
         // Cuadrados con imagen
-        const style = {};
-        const color1 = square.gradient?.color1 || '#00ffff';
-        const color2 = square.gradient?.color2 || '#00ffff';
-        const angle = square.gradient?.angle || 45;
-        style['--square-color-1'] = color1;
-        style['--square-color-2'] = color2;
-        style['--square-gradient-angle'] = `${angle}deg`;
-        
-        return (
-          <div
-            key={square.id}
-            ref={el => squareRefs.current[square.id] = el}
-            className={`${MAINCLASS}__square ${MAINCLASS}__square--target`}
-            data-square-id={square.id}
-            style={style}
-          >
-            {square.imageUrl && (
-              <img 
-                src={square.imageUrl} 
-                alt="Gallery"
-                className={`${MAINCLASS}__squareImage`}
-                style={{
-                  left: square.imagePosition?.x ?? '50%',
-                  top: square.imagePosition?.y ?? '50%',
-                  transform: `translate(-50%, -50%) rotate(${square.imageRotation ?? 0}deg)`
-                }}
-              />
-            )}
-          </div>
+        // Detectar si es GIF - los GIFs se renderizan en DOM porque canvas no soporta animación
+        const isGif = square.imageUrl && (
+          square.imageUrl.toLowerCase().endsWith('.gif')
         );
+        
+        if (isGif) {
+          // GIFs: renderizar en DOM para que se animen
+          const style = {};
+          const color1 = square.gradient?.color1 || '#00ffff';
+          const color2 = square.gradient?.color2 || '#00ffff';
+          const angle = square.gradient?.angle || 45;
+          style['--square-color-1'] = color1;
+          style['--square-color-2'] = color2;
+          style['--square-gradient-angle'] = `${angle}deg`;
+          
+          // Detectar si es JPEG o GIF para aplicar sombra (el CSS ya tiene drop-shadow y box-shadow)
+          const imageUrlLower = square.imageUrl?.toLowerCase() || '';
+          const isJpeg = imageUrlLower.endsWith('.jpg') || imageUrlLower.endsWith('.jpeg');
+          const shouldHaveShadow = isJpeg || isGif;
+          
+          return (
+            <div
+              key={square.id}
+              ref={el => squareRefs.current[square.id] = el}
+              className={`${MAINCLASS}__square ${MAINCLASS}__square--target`}
+              data-square-id={square.id}
+              style={style}
+            >
+              {square.imageUrl && (
+                <img 
+                  src={square.imageUrl} 
+                  alt="Gallery"
+                  className={`${MAINCLASS}__squareImage`}
+                  style={{
+                    left: square.imagePosition?.x ?? '50%',
+                    top: square.imagePosition?.y ?? '50%',
+                    transform: `translate(-50%, -50%) rotate(${square.imageRotation ?? 0}deg)`,
+                    // Asegurar que la sombra se aplique (el CSS ya tiene filter y box-shadow)
+                    filter: shouldHaveShadow ? 'drop-shadow(0 4px 12px rgba(0, 0, 0, 0.6)) drop-shadow(0 2px 6px rgba(0, 0, 0, 0.4))' : 'none',
+                    boxShadow: shouldHaveShadow ? '0 4px 20px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3)' : 'none'
+                  }}
+                />
+              )}
+            </div>
+          );
+        } else {
+          // No-GIFs: solo div invisible para GSAP (se renderizan en CanvasRenderer)
+          return (
+            <div
+              key={square.id}
+              ref={el => squareRefs.current[square.id] = el}
+              className={`${MAINCLASS}__square ${MAINCLASS}__square--target`}
+              data-square-id={square.id}
+              style={{ visibility: 'hidden', pointerEvents: 'none' }}
+            />
+          );
+        }
       })}
     </div>
   );
