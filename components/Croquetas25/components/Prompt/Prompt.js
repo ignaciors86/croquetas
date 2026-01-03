@@ -26,21 +26,59 @@ const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstance
   const previousTextRef = useRef('');
   const minHeightRef = useRef(0); // Altura mínima cuando hay una línea de texto
   const kittRef = useRef(null);
+  const lastDurationRef = useRef(0); // Para detectar cambios de duración (cambio de tramo)
   
   // Filtrar textos vacíos
   const validTextos = useMemo(() => {
     return textos.filter(text => text && text.trim() !== '');
   }, [textos]);
   
+  // Resetear cuando cambia la duración (cambio de tramo de audio) o los textos
+  const lastTextosLengthRef = useRef(validTextos.length);
+  useEffect(() => {
+    // Si cambian los textos, resetear todo
+    if (validTextos.length !== lastTextosLengthRef.current) {
+      console.log('[Prompt] Cambio de textos detectado, reseteando');
+      setCurrentTextIndex(-1);
+      lastTextIndexRef.current = -1;
+      setDisplayText('');
+      if (timelineRef.current) {
+        timelineRef.current.kill();
+        timelineRef.current = null;
+      }
+      lastTextosLengthRef.current = validTextos.length;
+    }
+    
+    // Si cambia la duración (cambio de tramo), resetear
+    if (duration !== lastDurationRef.current) {
+      if (duration > 0 && lastDurationRef.current > 0) {
+        console.log('[Prompt] Cambio de duración detectado (cambio de tramo):', lastDurationRef.current, '->', duration);
+        // Resetear el índice de texto cuando cambia el tramo
+        setCurrentTextIndex(-1);
+        lastTextIndexRef.current = -1;
+        setDisplayText('');
+        if (timelineRef.current) {
+          timelineRef.current.kill();
+          timelineRef.current = null;
+        }
+      }
+      lastDurationRef.current = duration;
+    }
+  }, [duration, validTextos.length]);
+  
   // Calcular tiempos para cada texto
   const textTimings = useMemo(() => {
     if (validTextos.length === 0) {
+      console.log('[Prompt] No hay textos válidos para calcular timings');
       return [];
     }
     
     if (!duration || duration === 0) {
+      console.log('[Prompt] Duration es 0, no se pueden calcular timings');
       return [];
     }
+    
+    console.log('[Prompt] Calculando timings para', validTextos.length, 'textos, duration:', duration.toFixed(2));
     
     // Calcular tiempo total necesario para todos los textos
     let totalTimeNeeded = 0;
@@ -72,10 +110,11 @@ const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstance
     
     // Si el tiempo necesario es mayor que la duración, escalar proporcionalmente
     const scaleFactor = duration / totalTimeNeeded;
+    console.log('[Prompt] Tiempo total necesario:', totalTimeNeeded.toFixed(2), 'scaleFactor:', scaleFactor.toFixed(4));
     
     // Calcular tiempos de inicio y fin para cada texto
     let accumulatedTime = 0;
-    return timings.map((timing, index) => {
+    const result = timings.map((timing, index) => {
       const scaledHeightTime = timing.heightAnimationTime * scaleFactor;
       const scaledFadeInTime = timing.fadeInTime * scaleFactor;
       const scaledReadingTime = timing.readingTime * scaleFactor;
@@ -104,123 +143,202 @@ const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstance
         scaledPauseTime
       };
     });
+    
+    console.log('[Prompt] Timings calculados:', result.map((t, i) => ({
+      index: i,
+      text: t.text.substring(0, 30),
+      start: t.startTime.toFixed(2),
+      end: t.endTime.toFixed(2)
+    })));
+    
+    return result;
   }, [validTextos, duration]);
   
   // Determinar qué texto mostrar según el tiempo actual
   useEffect(() => {
     if (textTimings.length === 0) {
       if (validTextos.length > 0) {
+        console.log('[Prompt] textTimings vacío pero hay textos válidos, estableciendo índice 0');
         setCurrentTextIndex(0);
       } else {
+        console.log('[Prompt] No hay textos válidos');
         setCurrentTextIndex(-1);
       }
       return;
     }
     
     if (!duration || duration === 0) {
+      console.log('[Prompt] duration es 0, estableciendo índice 0');
       setCurrentTextIndex(0);
       return;
     }
     
     // Encontrar el texto correspondiente al tiempo actual
     let foundIndex = -1;
+    
+    // Buscar el texto que corresponde al tiempo actual
     for (let i = 0; i < textTimings.length; i++) {
       const timing = textTimings[i];
-      if (currentTime >= timing.startTime && currentTime < timing.endTime) {
+      // Incluir el endTime en el rango para evitar gaps
+      if (currentTime >= timing.startTime && currentTime <= timing.endTime) {
         foundIndex = i;
         break;
       }
     }
     
-    // Si estamos después del último texto, mostrar el último
+    // Si no se encontró ningún texto, verificar si estamos antes del primero o después del último
     if (foundIndex === -1 && textTimings.length > 0) {
+      const firstTiming = textTimings[0];
       const lastTiming = textTimings[textTimings.length - 1];
-      if (currentTime >= lastTiming.endTime) {
-        foundIndex = textTimings.length - 1;
-      } else if (currentTime < textTimings[0].startTime) {
-        foundIndex = 0;
+      
+      if (currentTime < firstTiming.startTime) {
+        // Aún no ha empezado el primer texto
+        foundIndex = -1;
+      } else if (currentTime > lastTiming.endTime) {
+        // Ya pasó el último texto - verificar si han pasado más de 10 segundos
+        const timeSinceEnd = currentTime - lastTiming.endTime;
+        if (timeSinceEnd > 10) {
+          foundIndex = -1; // Ocultar después de 10 segundos
+        } else {
+          // Mantener el último texto visible hasta que pasen 10 segundos
+          foundIndex = textTimings.length - 1;
+        }
+      } else {
+        // Estamos en un gap entre textos
+        // Si hay un texto visible actualmente, mantenerlo visible hasta que aparezca el siguiente
+        // Solo ocultar si no hay texto visible y estamos en un gap
+        if (currentTextIndex >= 0) {
+          // Hay un texto visible, mantenerlo hasta que aparezca el siguiente
+          // Buscar el siguiente texto que debe aparecer
+          let nextTextIndex = -1;
+          for (let i = 0; i < textTimings.length; i++) {
+            const timing = textTimings[i];
+            if (currentTime < timing.startTime) {
+              nextTextIndex = i;
+              break;
+            }
+          }
+          
+          // Mantener el texto actual visible hasta que aparezca el siguiente
+          // No ocultar en gaps - el timeline se encargará de la animación de salida
+          if (nextTextIndex >= 0) {
+            const nextTiming = textTimings[nextTextIndex];
+            const timeUntilNext = nextTiming.startTime - currentTime;
+            // Si el siguiente texto está a menos de 10 segundos, mantener el actual visible
+            // Si está a más de 10 segundos, ocultar el actual
+            if (timeUntilNext <= 10) {
+              // Mantener el texto actual visible
+              foundIndex = currentTextIndex;
+            } else {
+              // Han pasado más de 10 segundos sin que aparezca el siguiente, ocultar
+              foundIndex = -1;
+            }
+          } else {
+            // No hay siguiente texto, mantener el actual visible
+            foundIndex = currentTextIndex;
+          }
+        } else {
+          // No hay texto visible, buscar el siguiente
+          for (let i = 0; i < textTimings.length; i++) {
+            const timing = textTimings[i];
+            if (currentTime < timing.startTime) {
+              // Este es el siguiente texto que aparecerá, pero aún no ha empezado
+              foundIndex = -1;
+              break;
+            }
+          }
+        }
       }
     }
     
-    setCurrentTextIndex(foundIndex);
+    // Actualizar solo si cambió el índice
+    if (foundIndex !== currentTextIndex) {
+      console.log('[Prompt] Cambiando texto:', {
+        from: currentTextIndex,
+        to: foundIndex,
+        currentTime: currentTime.toFixed(2),
+        duration: duration.toFixed(2)
+      });
+      setCurrentTextIndex(foundIndex);
+    }
   }, [currentTime, duration, textTimings, validTextos.length]);
   
   // Función auxiliar para actualizar la posición del timeline usando useRef para evitar dependencias
   const updateTimelinePositionRef = useRef((tl, relativeTime, timing, hadPreviousText) => {
     if (!tl) return;
     
+    // Si el tiempo relativo es negativo, empezar desde el principio
     if (relativeTime < 0) {
-      tl.pause(0);
+      tl.seek(0);
+      if (tl.paused()) {
+        tl.play();
+      }
       return;
     }
     
-    // Calcular tiempos del timeline
-    const fadeOutDuration = timing.scaledFadeOutTime * 0.6;
-    const collapseDuration = timing.scaledFadeOutTime * 0.4;
-    const collapseStart = timing.scaledFadeOutTime * 0.2; // Solapado con fade out
-    
-    const fadeOutEnd = fadeOutDuration;
-    const collapseEnd = collapseStart + collapseDuration;
-    const pauseEnd = collapseEnd + timing.scaledPauseTime;
-    const expandEnd = pauseEnd + timing.scaledHeightTime;
+    // Calcular tiempos del timeline (en orden cronológico)
+    const pauseTime = hadPreviousText ? timing.scaledPauseTime : 0;
+    const expandStart = pauseTime;
+    const expandEnd = expandStart + timing.scaledHeightTime;
     const fadeInEnd = expandEnd + timing.scaledFadeInTime;
+    const readingEnd = fadeInEnd + timing.scaledReadingTime;
+    const fadeOutEnd = readingEnd + (timing.scaledFadeOutTime * 0.6);
+    const collapseEnd = fadeOutEnd + (timing.scaledFadeOutTime * 0.4);
     
     // Mapear tiempo relativo a tiempo del timeline
     let timelineTime = 0;
     
-    if (relativeTime < timing.scaledHeightTime + timing.scaledFadeInTime) {
-      // Fase de entrada
-      const entryProgress = relativeTime / (timing.scaledHeightTime + timing.scaledFadeInTime);
-      if (hadPreviousText) {
-        timelineTime = pauseEnd + (expandEnd - pauseEnd) * entryProgress;
-        if (relativeTime > timing.scaledHeightTime) {
-          const fadeInProgress = (relativeTime - timing.scaledHeightTime) / timing.scaledFadeInTime;
-          timelineTime = expandEnd + (fadeInEnd - expandEnd) * fadeInProgress;
-        }
-      } else {
-        timelineTime = (expandEnd - pauseEnd) * entryProgress;
-        if (relativeTime > timing.scaledHeightTime) {
-          const fadeInProgress = (relativeTime - timing.scaledHeightTime) / timing.scaledFadeInTime;
-          timelineTime = expandEnd + (fadeInEnd - expandEnd) * fadeInProgress;
-        }
-      }
-    } else if (relativeTime < timing.readingEndTime) {
-      // Fase de lectura (mantener visible)
+    if (relativeTime < pauseTime) {
+      // Aún en pausa
+      timelineTime = (relativeTime / pauseTime) * pauseTime;
+    } else if (relativeTime < expandEnd) {
+      // Fase de expansión
+      const expandProgress = (relativeTime - pauseTime) / timing.scaledHeightTime;
+      timelineTime = expandStart + (expandEnd - expandStart) * expandProgress;
+    } else if (relativeTime < fadeInEnd) {
+      // Fase de fade in
+      const fadeInProgress = (relativeTime - expandEnd) / timing.scaledFadeInTime;
+      timelineTime = expandEnd + (fadeInEnd - expandEnd) * fadeInProgress;
+    } else if (relativeTime < readingEnd) {
+      // Fase de lectura (mantener visible) - mantener en fadeInEnd para que se vea el texto
       timelineTime = fadeInEnd;
+    } else if (relativeTime < fadeOutEnd) {
+      // Fase de fade out del texto
+      const fadeOutProgress = (relativeTime - readingEnd) / (timing.scaledFadeOutTime * 0.6);
+      // El fade out va desde fadeInEnd hacia fadeOutEnd (el texto se desvanece)
+      timelineTime = fadeInEnd + (fadeOutEnd - fadeInEnd) * fadeOutProgress;
     } else {
-      // Fase de salida (fade out + colapso)
-      const exitProgress = (relativeTime - timing.readingEndTime) / (timing.scaledFadeOutTime + timing.scaledPauseTime);
-      if (exitProgress < 0.6) {
-        // Fade out del texto (60% del tiempo)
-        const textFadeProgress = exitProgress / 0.6;
-        timelineTime = fadeInEnd - (fadeInEnd - fadeOutEnd) * textFadeProgress;
-      } else {
-        // Colapsar el div (40% del tiempo) - pero solo hasta altura mínima
-        const collapseProgress = (exitProgress - 0.6) / 0.4;
-        timelineTime = collapseStart + (collapseEnd - collapseStart) * collapseProgress;
-        // Asegurar que la altura no baje de la mínima
-        if (promptRef.current && minHeightRef.current > 0) {
-          const currentHeight = promptRef.current.offsetHeight || promptRef.current.scrollHeight;
-          if (currentHeight < minHeightRef.current) {
-            gsap.set(promptRef.current, { height: minHeightRef.current });
-          }
-        }
-      }
+      // Fase de colapso
+      const collapseProgress = (relativeTime - fadeOutEnd) / (timing.scaledFadeOutTime * 0.4);
+      timelineTime = fadeOutEnd + (collapseEnd - fadeOutEnd) * collapseProgress;
     }
     
-    tl.seek(Math.max(0, Math.min(timelineTime, tl.duration())));
-    tl.play();
+    const seekTime = Math.max(0, Math.min(timelineTime, tl.duration()));
+    tl.seek(seekTime);
+    // Asegurar que el timeline esté reproduciéndose
+    if (tl.paused()) {
+      tl.play();
+    }
   });
   
   // Crear timeline de GSAP cuando cambia el índice del texto
   useEffect(() => {
+    console.log('[Prompt] useEffect timeline - currentTextIndex:', currentTextIndex, 'lastTextIndex:', lastTextIndexRef.current, 'textTimings.length:', textTimings.length);
+    
     if (currentTextIndex === -1) {
       // Ocultar prompt si no hay texto
+      // IMPORTANTE: Solo ocultar si realmente no hay texto que mostrar
+      // No interrumpir animaciones en curso
       if (timelineRef.current) {
-        timelineRef.current.kill();
-        timelineRef.current = null;
+        // Si el timeline está activo, dejar que termine su animación de salida
+        if (!timelineRef.current.isActive()) {
+          timelineRef.current.kill();
+          timelineRef.current = null;
+        }
       }
-      if (promptRef.current && textContainerRef.current) {
+      if (promptRef.current && textContainerRef.current && lastTextIndexRef.current >= 0) {
+        // Solo ocultar si había un texto visible anteriormente
+        console.log('[Prompt] Ocultando prompt (currentTextIndex === -1)');
         gsap.to([promptRef.current, textContainerRef.current], {
           opacity: 0,
           height: 0,
@@ -231,15 +349,18 @@ const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstance
           }
         });
       }
+      lastTextIndexRef.current = -1;
       return;
     }
     
     if (!promptRef.current || !textContainerRef.current) {
+      console.log('[Prompt] Refs no disponibles, esperando...');
       return;
     }
     
     const timing = textTimings[currentTextIndex];
     if (!timing) {
+      console.log('[Prompt] No hay timing para índice:', currentTextIndex);
       return;
     }
     
@@ -247,10 +368,21 @@ const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstance
     const isNewText = currentTextIndex !== lastTextIndexRef.current;
     const wasVisible = lastTextIndexRef.current >= 0;
     
+    console.log('[Prompt] Procesando texto:', {
+      currentTextIndex,
+      isNewText,
+      wasVisible,
+      text: text.substring(0, 30),
+      timingStart: timing.startTime.toFixed(2),
+      timingEnd: timing.endTime.toFixed(2)
+    });
+    
     // Si es un texto nuevo, crear un nuevo timeline
     if (isNewText) {
+      console.log('[Prompt] Creando nuevo timeline para texto:', currentTextIndex);
       // Matar timeline anterior si existe
       if (timelineRef.current) {
+        console.log('[Prompt] Matando timeline anterior');
         timelineRef.current.kill();
         timelineRef.current = null;
       }
@@ -335,16 +467,18 @@ const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstance
               });
             }
             
-            // Crear nuevo timeline
+            // Crear nuevo timeline con TODAS las fases
+            // Pausado para sincronizarlo con el tiempo del audio mediante seek
             const tl = gsap.timeline({ paused: true });
             
-            // Pausa entre textos (si había texto anterior)
+            const finalHeight = Math.max(targetHeightRef.current, minHeightRef.current || 0);
+            
+            // FASE 1: Pausa entre textos (si había texto anterior)
             if (wasVisible && previousText && timing.scaledPauseTime > 0) {
               tl.to({}, { duration: timing.scaledPauseTime });
             }
             
-            // Expandir el div
-            const finalHeight = Math.max(targetHeightRef.current, minHeightRef.current || 0);
+            // FASE 2: Expandir el div (entrada)
             tl.set(promptRef.current, {
               height: minHeightRef.current || 0,
               y: '100%',
@@ -359,11 +493,30 @@ const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstance
               ease: 'power2.out'
             }, '>0');
             
-            // Fade in del texto
+            // FASE 3: Fade in del texto
             tl.to(textContainerRef.current, {
               opacity: 1,
               duration: timing.scaledFadeInTime,
               ease: 'power2.out'
+            }, '>0');
+            
+            // FASE 4: Mantener visible durante el tiempo de lectura
+            // (no añadir animación, solo tiempo)
+            tl.to({}, { duration: timing.scaledReadingTime }, '>0');
+            
+            // FASE 5: Fade out del texto
+            tl.to(textContainerRef.current, {
+              opacity: 0,
+              duration: timing.scaledFadeOutTime * 0.6,
+              ease: 'power2.in'
+            }, '>0');
+            
+            // FASE 6: Colapsar el div (pero mantener altura mínima)
+            tl.to(promptRef.current, {
+              height: minHeightRef.current || 0,
+              y: '100%',
+              duration: timing.scaledFadeOutTime * 0.4,
+              ease: 'power2.in'
             }, '>0');
             
             // Guardar referencia al timeline
@@ -371,21 +524,73 @@ const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstance
             lastTextIndexRef.current = currentTextIndex;
             previousTextRef.current = text;
             
-            // Actualizar progreso según el tiempo actual
+            // Sincronizar el timeline con el tiempo actual del audio
             const relativeTime = currentTime - timing.startTime;
-            updateTimelinePositionRef.current(tl, relativeTime, timing, wasVisible);
+            if (relativeTime >= 0) {
+              // Calcular el tiempo del timeline correspondiente
+              const pauseTime = wasVisible ? timing.scaledPauseTime : 0;
+              const expandStart = pauseTime;
+              const expandEnd = expandStart + timing.scaledHeightTime;
+              const fadeInEnd = expandEnd + timing.scaledFadeInTime;
+              const readingEnd = fadeInEnd + timing.scaledReadingTime;
+              const fadeOutEnd = readingEnd + (timing.scaledFadeOutTime * 0.6);
+              const collapseEnd = fadeOutEnd + (timing.scaledFadeOutTime * 0.4);
+              
+              let timelineTime = 0;
+              if (relativeTime < pauseTime) {
+                timelineTime = (relativeTime / pauseTime) * pauseTime;
+              } else if (relativeTime < expandEnd) {
+                const expandProgress = (relativeTime - pauseTime) / timing.scaledHeightTime;
+                timelineTime = expandStart + (expandEnd - expandStart) * expandProgress;
+              } else if (relativeTime < fadeInEnd) {
+                const fadeInProgress = (relativeTime - expandEnd) / timing.scaledFadeInTime;
+                timelineTime = expandEnd + (fadeInEnd - expandEnd) * fadeInProgress;
+              } else if (relativeTime < readingEnd) {
+                timelineTime = fadeInEnd;
+              } else if (relativeTime < fadeOutEnd) {
+                const fadeOutProgress = (relativeTime - readingEnd) / (timing.scaledFadeOutTime * 0.6);
+                timelineTime = fadeInEnd + (fadeOutEnd - fadeInEnd) * fadeOutProgress;
+              } else {
+                const collapseProgress = (relativeTime - fadeOutEnd) / (timing.scaledFadeOutTime * 0.4);
+                timelineTime = fadeOutEnd + (collapseEnd - fadeOutEnd) * collapseProgress;
+              }
+              
+              const seekTime = Math.max(0, Math.min(timelineTime, tl.duration()));
+              tl.seek(seekTime);
+              // Reproducir el timeline para que las animaciones funcionen
+              if (tl.paused()) {
+                tl.play();
+              }
+            } else {
+              tl.seek(0);
+              if (tl.paused()) {
+                tl.play();
+              }
+            }
           });
         });
       }
     } else {
       // Mismo texto, solo actualizar posición del timeline
-      if (timelineRef.current) {
+      if (timelineRef.current && timing) {
         const relativeTime = currentTime - timing.startTime;
         const wasVisible = lastTextIndexRef.current >= 0;
         updateTimelinePositionRef.current(timelineRef.current, relativeTime, timing, wasVisible);
       }
     }
   }, [currentTextIndex, currentTime, textTimings, validTextos]);
+  
+  // Sincronizar el timeline con el tiempo actual del audio
+  useEffect(() => {
+    if (timelineRef.current && currentTextIndex !== -1) {
+      const timing = textTimings[currentTextIndex];
+      if (timing) {
+        const relativeTime = currentTime - timing.startTime;
+        const wasVisible = lastTextIndexRef.current >= 0; // Asumir que si había un texto anterior, estaba visible
+        updateTimelinePositionRef.current(timelineRef.current, relativeTime, timing, wasVisible);
+      }
+    }
+  }, [currentTime, currentTextIndex, textTimings]);
   
   // Cleanup al desmontar
   useEffect(() => {
@@ -397,6 +602,8 @@ const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstance
     };
   }, []);
   
+  // Log de depuración eliminado - innecesario en producción
+
   if (currentTextIndex === -1 && !displayText) {
     return null;
   }

@@ -75,10 +75,14 @@ export const useTracks = () => {
         const finalTracks = [];
         
         tracksMap.forEach((track, trackKey) => {
-          // Detectar si es Croquetas25
+          // Detectar si es Croquetas25 (Nachitos de Nochevieja)
+          const normalizedTrackName = normalizeName(track.name);
           const isCroquetas25 = track.name && (
             track.name.toLowerCase().includes('croquetas25') ||
-            normalizeName(track.name) === 'croquetas25'
+            normalizedTrackName === 'croquetas25' ||
+            normalizedTrackName === 'nachitos-de-nochevieja' ||
+            track.name.toLowerCase().includes('nachitos-de-nochevieja') ||
+            track.name.toLowerCase().includes('nachitos')
           );
 
           let imagesArray = [];
@@ -144,7 +148,10 @@ export const useTracks = () => {
             });
           }
 
-          // Procesar audios
+          // NUEVA LÓGICA: Los tramos se definen por los audios
+          // Cada subcarpeta con audio = nuevo tramo
+          // Las imágenes y guiones se asocian al tramo correspondiente
+          
           const audioSubfolders = Array.from(track.audioBySubfolder.keys()).sort((a, b) => {
             if (a === '__root__') return -1;
             if (b === '__root__') return 1;
@@ -153,38 +160,90 @@ export const useTracks = () => {
           
           const audioSrcs = [];
           const subfolderToAudioIndex = {};
+          const segments = []; // Array de tramos: [{ audioIndex, audioSrc, subfolders: [], images: [], guion: null }]
           let audioIndex = 0;
-          let lastAudioIndex = -1;
+          let currentSegmentAudioIndex = -1;
 
-          // Primero, mapear audios existentes
+          // Crear tramos basados en los audios
           audioSubfolders.forEach(subfolder => {
             const audios = track.audioBySubfolder.get(subfolder);
             if (audios && audios.length > 0) {
-              // Las URLs del manifest ya son strings como /tracks/...
               let audioSrc = audios[0];
-              // Verificar que sea un string válido antes de agregarlo
               if (typeof audioSrc === 'string' && audioSrc.length > 0) {
+                // Nuevo tramo: cada subcarpeta con audio define un nuevo tramo
                 subfolderToAudioIndex[subfolder] = audioIndex;
                 audioSrcs.push(audioSrc);
-                lastAudioIndex = audioIndex;
+                
+                // Crear nuevo tramo
+                segments.push({
+                  audioIndex: audioIndex,
+                  audioSrc: audioSrc,
+                  audioSubfolder: subfolder,
+                  subfolders: [subfolder], // Subcarpetas asociadas a este tramo
+                  images: [], // Se llenará después
+                  guion: null // Se llenará después
+                });
+                
+                currentSegmentAudioIndex = audioIndex;
                 audioIndex++;
               }
             }
           });
 
-          // Luego, asociar subcarpetas de imágenes sin audio al audio anterior
+          // Si no hay audios, crear un tramo único con índice 0
+          if (segments.length === 0) {
+            segments.push({
+              audioIndex: 0,
+              audioSrc: null,
+              audioSubfolder: null,
+              subfolders: [],
+              images: [],
+              guion: null
+            });
+            currentSegmentAudioIndex = 0;
+          }
+
+          // Asociar subcarpetas de imágenes y guiones a los tramos
+          // Si una subcarpeta no tiene audio, se asocia al último tramo creado
           subfolderOrder.forEach(subfolder => {
             if (!subfolderToAudioIndex.hasOwnProperty(subfolder)) {
-              if (lastAudioIndex >= 0) {
-                subfolderToAudioIndex[subfolder] = lastAudioIndex;
-              } else if (audioSrcs.length > 0) {
+              // Subcarpeta sin audio propio: asociar al último tramo
+              if (currentSegmentAudioIndex >= 0 && segments.length > 0) {
+                subfolderToAudioIndex[subfolder] = currentSegmentAudioIndex;
+                const lastSegment = segments[segments.length - 1];
+                if (!lastSegment.subfolders.includes(subfolder)) {
+                  lastSegment.subfolders.push(subfolder);
+                }
+              } else if (segments.length > 0) {
+                // Si no hay tramo actual, usar el primero
                 subfolderToAudioIndex[subfolder] = 0;
-              } else {
-                lastAudioIndex = subfolderToAudioIndex[subfolder];
+                segments[0].subfolders.push(subfolder);
               }
             } else {
-              lastAudioIndex = subfolderToAudioIndex[subfolder];
+              // Subcarpeta con audio: ya está en su tramo
+              const segmentIndex = subfolderToAudioIndex[subfolder];
+              const segment = segments.find(s => s.audioIndex === segmentIndex);
+              if (segment && !segment.subfolders.includes(subfolder)) {
+                segment.subfolders.push(subfolder);
+              }
             }
+          });
+
+          // Llenar imágenes y guiones de cada tramo
+          segments.forEach(segment => {
+            segment.subfolders.forEach(subfolder => {
+              // Agregar imágenes de esta subcarpeta al tramo
+              const subfolderImages = track.imagesBySubfolder.get(subfolder) || [];
+              segment.images.push(...subfolderImages);
+              
+              // Si hay guion en esta subcarpeta y el tramo aún no tiene guion, usarlo
+              if (!segment.guion) {
+                const subfolderGuiones = track.guionesBySubfolder.get(subfolder) || [];
+                if (subfolderGuiones.length > 0) {
+                  segment.guion = subfolderGuiones[0].path;
+                }
+              }
+            });
           });
 
           // Asegurar que todos los audioSrcs sean strings válidos

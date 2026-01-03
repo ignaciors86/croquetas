@@ -10,18 +10,31 @@ const Seek = ({ squares, seekToImagePosition, selectedTrack, audioRef, currentAu
   const [audioDurations, setAudioDurations] = useState([]);
   const progressBarRef = useRef(null);
 
-  // Calcular duraciones de los audios
+  // Calcular duraciones de los audios usando la estructura de segments
   useEffect(() => {
     if (typeof window === 'undefined' || typeof Audio === 'undefined') return;
-    if (!audioSrcs || audioSrcs.length === 0) {
+    
+    // NUEVA LÓGICA: Usar selectedTrack.segments si está disponible
+    let audioSources = [];
+    if (selectedTrack?.segments && selectedTrack.segments.length > 0) {
+      // Usar los audios de los segments
+      audioSources = selectedTrack.segments
+        .filter(segment => segment.audioSrc)
+        .map(segment => segment.audioSrc);
+    } else if (audioSrcs && audioSrcs.length > 0) {
+      // Fallback: usar audioSrcs directamente
+      audioSources = audioSrcs;
+    }
+    
+    if (audioSources.length === 0) {
       setAudioDurations([]);
       return;
     }
 
     const loadDurations = async () => {
       const durations = [];
-      for (let i = 0; i < audioSrcs.length; i++) {
-        const src = audioSrcs[i];
+      for (let i = 0; i < audioSources.length; i++) {
+        const src = audioSources[i];
         const srcString = typeof src === 'string' ? src : (src?.default || src);
         const audio = new Audio(srcString);
         try {
@@ -42,7 +55,7 @@ const Seek = ({ squares, seekToImagePosition, selectedTrack, audioRef, currentAu
     };
 
     loadDurations();
-  }, [audioSrcs]);
+  }, [selectedTrack, audioSrcs]);
 
   useEffect(() => {
     if (!audioRef?.current) return;
@@ -96,8 +109,73 @@ const Seek = ({ squares, seekToImagePosition, selectedTrack, audioRef, currentAu
     const clickX = clientX - rect.left;
     const percentage = Math.max(0, Math.min(100, (clickX / rect.width) * 100));
     
-    // Si hay múltiples audios, determinar qué audio corresponde al click
-    if (audioDurations.length > 1) {
+    // NUEVA LÓGICA: Usar selectedTrack.segments si está disponible
+    if (selectedTrack?.segments && selectedTrack.segments.length > 0) {
+      // Calcular duraciones de los segments
+      const segmentDurations = selectedTrack.segments
+        .map(segment => {
+          const audioIndex = segment.audioIndex;
+          return audioDurations[audioIndex] || 0;
+        });
+      
+      const totalDuration = segmentDurations.reduce((sum, dur) => sum + dur, 0);
+      if (totalDuration === 0) {
+        // Fallback: usar duración del audio actual
+        const audio = audioRef.current;
+        if (!audio.duration) return;
+        const targetTime = (percentage / 100) * audio.duration;
+        if (seekToImagePosition && selectedTrack) {
+          seekToImagePosition(targetTime, selectedTrack);
+        }
+        if (setCurrentAudioIndex) {
+          setCurrentAudioIndex(currentAudioIndex, targetTime);
+        } else {
+          audio.currentTime = targetTime;
+        }
+        return;
+      }
+      
+      // Calcular el tiempo total correspondiente al click
+      const targetTotalTime = (percentage / 100) * totalDuration;
+      
+      // Determinar qué segmento corresponde y el tiempo dentro de ese segmento
+      let accumulatedTime = 0;
+      let targetSegment = null;
+      let targetTime = 0;
+      
+      for (let i = 0; i < selectedTrack.segments.length; i++) {
+        const segment = selectedTrack.segments[i];
+        const duration = segmentDurations[i] || 0;
+        if (targetTotalTime <= accumulatedTime + duration) {
+          targetSegment = segment;
+          targetTime = targetTotalTime - accumulatedTime;
+          break;
+        }
+        accumulatedTime += duration;
+      }
+      
+      if (targetSegment) {
+        const targetAudioIndex = targetSegment.audioIndex;
+        
+        // Usar seekToAudio para cambio con fade
+        if (setCurrentAudioIndex) {
+          console.log(`[Seek] Cambiando a segmento ${targetSegment.audioIndex} (audio ${targetAudioIndex}), tiempo: ${targetTime}`);
+          setCurrentAudioIndex(targetAudioIndex, targetTime);
+        } else {
+          // Fallback: solo hacer seek si no hay función
+          const audio = audioRef.current;
+          if (audio && audio.readyState >= 2) {
+            audio.currentTime = targetTime;
+          }
+        }
+        
+        // Usar tiempos auxiliares para reposicionar imágenes ANTES de hacer seek del audio
+        if (seekToImagePosition && selectedTrack) {
+          seekToImagePosition(targetTotalTime, selectedTrack);
+        }
+      }
+    } else if (audioDurations.length > 1) {
+      // Fallback: lógica antigua para múltiples audios
       const totalDuration = audioDurations.reduce((sum, dur) => sum + dur, 0);
       if (totalDuration === 0) return;
       
@@ -119,46 +197,16 @@ const Seek = ({ squares, seekToImagePosition, selectedTrack, audioRef, currentAu
         accumulatedTime += duration;
       }
       
-      // Si el audio objetivo es diferente al actual, cambiar de audio
-      if (targetAudioIndex !== currentAudioIndex && setCurrentAudioIndex) {
+      // Usar seekToAudio para cambio con fade
+      if (setCurrentAudioIndex) {
         console.log(`[Seek] Cambiando de audio ${currentAudioIndex} a ${targetAudioIndex}, tiempo: ${targetTime}`);
-        const audio = audioRef.current;
-        const wasPlaying = !audio.paused;
-        
-        // Cambiar el índice - esto activará el useEffect que cambiará el src
-        setCurrentAudioIndex(targetAudioIndex);
-        
-        // Esperar a que el audio se cargue y luego hacer seek
-        // Usar un pequeño delay para asegurar que el useEffect haya cambiado el src
-        setTimeout(() => {
-          if (audioRef?.current) {
-            const newAudio = audioRef.current;
-            // Esperar a que el audio esté listo antes de hacer seek
-            const handleCanSeek = () => {
-              newAudio.removeEventListener('canplay', handleCanSeek);
-              newAudio.removeEventListener('loadeddata', handleCanSeek);
-              newAudio.currentTime = targetTime;
-              if (wasPlaying) {
-                newAudio.play().catch(() => {});
-              }
-            };
-            
-            newAudio.addEventListener('canplay', handleCanSeek);
-            newAudio.addEventListener('loadeddata', handleCanSeek);
-            
-            // Si ya está listo, hacer seek inmediatamente
-            if (newAudio.readyState >= 2) {
-              newAudio.currentTime = targetTime;
-              if (wasPlaying) {
-                newAudio.play().catch(() => {});
-              }
-            }
-          }
-        }, 50);
+        setCurrentAudioIndex(targetAudioIndex, targetTime);
       } else {
-        // Mismo audio, solo hacer seek
+        // Fallback: solo hacer seek si no hay función
         const audio = audioRef.current;
-        audio.currentTime = targetTime;
+        if (audio && audio.readyState >= 2) {
+          audio.currentTime = targetTime;
+        }
       }
       
       // Usar tiempos auxiliares para reposicionar imágenes ANTES de hacer seek del audio
@@ -178,7 +226,11 @@ const Seek = ({ squares, seekToImagePosition, selectedTrack, audioRef, currentAu
       }
       
       // Hacer seek en el audio
-      audio.currentTime = targetTime;
+      if (setCurrentAudioIndex) {
+        setCurrentAudioIndex(currentAudioIndex, targetTime);
+      } else {
+        audio.currentTime = targetTime;
+      }
     }
   };
 
@@ -200,6 +252,57 @@ const Seek = ({ squares, seekToImagePosition, selectedTrack, audioRef, currentAu
   };
 
   const segments = React.useMemo(() => {
+    // NUEVA LÓGICA: Usar selectedTrack.segments si está disponible
+    if (selectedTrack?.segments && selectedTrack.segments.length > 0) {
+      // Calcular duraciones totales de los segments
+      const segmentDurations = selectedTrack.segments
+        .map(segment => {
+          // Buscar la duración correspondiente al audioIndex del segmento
+          const audioIndex = segment.audioIndex;
+          return audioDurations[audioIndex] || 0;
+        });
+      
+      const totalDuration = segmentDurations.reduce((sum, dur) => sum + dur, 0);
+      if (totalDuration === 0) {
+        // Fallback: usar duración del audio actual si está disponible
+        if (audioRef?.current?.duration) {
+          return [{
+            index: 0,
+            startPercent: 0,
+            widthPercent: 100,
+            audioIndex: 0,
+            ...getSegmentColors(0)
+          }];
+        }
+        return [];
+      }
+      
+      const segmentsData = [];
+      let accumulatedTime = 0;
+      
+      selectedTrack.segments.forEach((segment, index) => {
+        const duration = segmentDurations[index] || 0;
+        if (duration > 0) {
+          const startPercent = (accumulatedTime / totalDuration) * 100;
+          const widthPercent = (duration / totalDuration) * 100;
+          const colors = getSegmentColors(index);
+          
+          segmentsData.push({
+            index,
+            audioIndex: segment.audioIndex,
+            startPercent,
+            widthPercent,
+            ...colors
+          });
+          
+          accumulatedTime += duration;
+        }
+      });
+      
+      return segmentsData;
+    }
+    
+    // Fallback: lógica antigua usando audioDurations directamente
     if (!audioDurations || audioDurations.length === 0) {
       // Si solo hay un audio, mostrar un solo segmento
       if (audioRef?.current?.duration) {
@@ -207,6 +310,7 @@ const Seek = ({ squares, seekToImagePosition, selectedTrack, audioRef, currentAu
           index: 0,
           startPercent: 0,
           widthPercent: 100,
+          audioIndex: 0,
           ...getSegmentColors(0)
         }];
       }
@@ -226,6 +330,7 @@ const Seek = ({ squares, seekToImagePosition, selectedTrack, audioRef, currentAu
       
       segmentsData.push({
         index,
+        audioIndex: index,
         startPercent,
         widthPercent,
         ...colors
@@ -235,7 +340,7 @@ const Seek = ({ squares, seekToImagePosition, selectedTrack, audioRef, currentAu
     });
     
     return segmentsData;
-  }, [audioDurations, audioRef]);
+  }, [audioDurations, audioRef, selectedTrack]);
 
   const handleTouchStart = (e) => {
     e.preventDefault(); // Prevenir scroll mientras se toca

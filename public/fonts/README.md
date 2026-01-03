@@ -14,3 +14,4 @@ Coloca aquí los archivos de fuente para las croquetas y el prompt:
 
 Los font-faces ya están configurados en `app/globals.css`. Solo necesitas añadir los archivos de fuente aquí.
 
+

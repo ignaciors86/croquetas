@@ -489,6 +489,12 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
       const currentAudio = currentAudioRef.current;
       if (!currentAudio) return;
       
+      // Si ya estamos haciendo fade out (fade automático), ignorar el evento ended
+      if (fadeOutTweenRef.current && fadeOutTweenRef.current.isActive()) {
+        console.log('[AudioContext] Ignorando ended porque ya hay fade out en curso');
+        return;
+      }
+      
       setIsPlaying(false);
       
       // Usar refs para obtener valores actuales sin depender de closures
@@ -539,31 +545,14 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
         } 
       }));
       
-      // Usar seekToAudio para cambiar al siguiente audio (esto manejará el fade y todo correctamente)
-      // Buscar la función seekToAudio en el contexto
-      // Nota: seekToAudio está definida más abajo, así que usamos el evento para que SubfolderAudioController lo maneje
-      // O mejor, hacer fade out y luego llamar a seekToAudio directamente
-      
-      // Hacer fade out breve del actual
-      if (fadeOutTweenRef.current) {
-        fadeOutTweenRef.current.kill();
-      }
-      
-        fadeOutTweenRef.current = gsap.to(currentAudio, {
-          volume: 0,
-          duration: 0.3, // Fade out breve
-          ease: 'power2.in',
-          onComplete: async () => {
-            // Llamar directamente a seekToAudio para cambiar al siguiente audio con fade
+      // Usar seekToAudio directamente - ya maneja el fade out/in correctamente
             if (seekToAudioRef.current) {
-              console.log(`[AudioContext] handleEnded: Llamando a seekToAudio(${nextIndex}, 0) después del fade out`);
-              await seekToAudioRef.current(nextIndex, 0);
+        console.log(`[AudioContext] handleEnded: Llamando a seekToAudio(${nextIndex}, 0) para cambio con fade`);
+        // seekToAudio ya maneja el fade out del actual y fade in del siguiente
+        seekToAudioRef.current(nextIndex, 0);
             } else {
-              console.warn('[AudioContext] handleEnded: seekToAudioRef.current no está disponible, el evento debería manejarlo');
+        console.warn('[AudioContext] handleEnded: seekToAudioRef.current no está disponible');
             }
-            fadeOutTweenRef.current = null;
-          }
-        });
     };
 
     audio.addEventListener('ended', handleEnded);
@@ -572,6 +561,94 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
       audio.removeEventListener('ended', handleEnded);
     };
   }, []); // Sin dependencias - el listener se mantiene estable y usa refs para valores actuales
+
+  // Monitorear el tiempo del audio para hacer fade automático antes del final
+  const validAudioSrcsLengthRef = React.useRef(validAudioSrcs.length);
+  React.useEffect(() => {
+    validAudioSrcsLengthRef.current = validAudioSrcs.length;
+  }, [validAudioSrcs.length]);
+
+  const audioDurationsRef = React.useRef(audioDurations);
+  React.useEffect(() => {
+    audioDurationsRef.current = audioDurations;
+  }, [audioDurations]);
+
+  useEffect(() => {
+    if (!isPlaying || !currentAudioRef.current || validAudioSrcsLengthRef.current <= 1) return;
+    
+    const audio = currentAudioRef.current;
+    const currentIdx = currentIndexRef.current;
+    const duration = audioDurationsRef.current[currentIdx];
+    
+    if (!duration || duration === 0) return;
+    
+    // Hacer fade out 3 segundos antes del final y cambiar al siguiente
+    const fadeOutTime = duration - 3; // 3 segundos antes del final
+    if (fadeOutTime <= 0) return; // Si el audio es muy corto, no hacer fade
+    
+    let timeUpdateInterval = null;
+    let fadeOutStarted = false;
+    
+    const checkTime = () => {
+      if (!audio || audio.paused) {
+        if (timeUpdateInterval) {
+          clearInterval(timeUpdateInterval);
+          timeUpdateInterval = null;
+        }
+        return;
+      }
+      
+      const currentTime = audio.currentTime || 0;
+      
+      // Si llegamos al tiempo de fade out y aún no hemos empezado
+      if (currentTime >= fadeOutTime && !fadeOutStarted) {
+        fadeOutStarted = true;
+        
+        // Verificar si hay siguiente audio
+        const nextIndex = currentIdx + 1;
+        if (nextIndex < validAudioSrcsLengthRef.current) {
+          console.log(`[AudioContext] Iniciando fade automático antes del final (${fadeOutTime.toFixed(2)}s de ${duration.toFixed(2)}s)`);
+          
+          // Hacer fade out del actual
+          if (fadeOutTweenRef.current) {
+            fadeOutTweenRef.current.kill();
+          }
+          
+          fadeOutTweenRef.current = gsap.to(audio, {
+            volume: 0,
+            duration: 2.5, // Fade out de 2.5 segundos
+            ease: 'power2.in',
+            onComplete: () => {
+              // Cambiar al siguiente audio usando seekToAudio (marcar que viene de fade automático)
+              if (seekToAudioRef.current) {
+                console.log(`[AudioContext] Fade automático completado, cambiando a audio ${nextIndex}`);
+                seekToAudioRef.current(nextIndex, 0, true);
+              }
+              fadeOutTweenRef.current = null;
+            }
+          });
+        }
+      }
+      
+      // Si el audio terminó o pasó el tiempo de fade, limpiar
+      if (currentTime >= duration || fadeOutStarted) {
+        if (timeUpdateInterval) {
+          clearInterval(timeUpdateInterval);
+          timeUpdateInterval = null;
+        }
+      }
+    };
+    
+    // Verificar cada 100ms
+    timeUpdateInterval = setInterval(checkTime, 100);
+    
+    return () => {
+      if (timeUpdateInterval) {
+        clearInterval(timeUpdateInterval);
+      }
+      fadeOutStarted = false;
+    };
+  }, [isPlaying, currentIndex]);
 
   // Configurar el audio actual
   useEffect(() => {
@@ -1673,9 +1750,9 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
   };
 
   // Función para cambiar a un audio específico de la playlist
-  const seekToAudio = async (index, targetTime = 0) => {
+  const seekToAudio = async (index, targetTime = 0, fromAutoFade = false) => {
     if (index < 0 || index >= validAudioSrcs.length) return;
-    if (index === currentIndex && targetTime === 0) return; // Si es el mismo y no hay tiempo específico, no hacer nada
+    if (index === currentIndex && targetTime === 0 && !fromAutoFade) return; // Si es el mismo y no hay tiempo específico, no hacer nada
     
     // SIMPLIFICACIÓN: Para un solo audio, usar currentTime simple como Timeline
     if (useSimpleAudio && currentAudioRef.current) {
@@ -1802,20 +1879,23 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
     }
   };
 
-  // Función para obtener el tiempo total de la playlist
-  const getTotalDuration = () => {
+  // Función para obtener el tiempo total de la playlist - usar useCallback para evitar recreaciones
+  const getTotalDuration = React.useCallback(() => {
     // SIMPLIFICACIÓN: Para un solo audio, usar duration simple como Timeline
     if (useSimpleAudio && currentAudioRef.current) {
-      return currentAudioRef.current.duration || 0;
+      const duration = currentAudioRef.current.duration || 0;
+      return duration;
     }
-    return audioDurations.reduce((sum, dur) => sum + dur, 0);
-  };
+    const total = audioDurations.reduce((sum, dur) => sum + dur, 0);
+    return total;
+  }, [audioDurations, useSimpleAudio]);
 
-  // Función para obtener el tiempo transcurrido total
-  const getTotalElapsed = () => {
+  // Función para obtener el tiempo transcurrido total - usar useCallback para evitar recreaciones
+  const getTotalElapsed = React.useCallback(() => {
     // SIMPLIFICACIÓN: Para un solo audio, usar currentTime simple como Timeline
     if (useSimpleAudio && currentAudioRef.current) {
-      return currentAudioRef.current.currentTime || 0;
+      const elapsed = currentAudioRef.current.currentTime || 0;
+      return elapsed;
     }
     
     // PRIORIDAD 1: Fallback a Howler.js
@@ -1837,8 +1917,10 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
       .slice(0, currentIndex)
       .reduce((sum, dur) => sum + dur, 0);
     
-    return previousTime + (currentAudioRef.current.currentTime || 0);
-  };
+    const currentTime = currentAudioRef.current.currentTime || 0;
+    const total = previousTime + currentTime;
+    return total;
+  }, [audioDurations, currentIndex, useSimpleAudio, useMultipleElements]);
 
   // Controles de teclado para audio
   useEffect(() => {

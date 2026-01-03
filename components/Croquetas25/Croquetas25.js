@@ -120,12 +120,18 @@ const Croquetas25 = () => {
 };
 
 const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
-  const { audios, guion, play, isLoaded, loadingProgress, audioRef, analyserRef, dataArrayRef, timeDataArrayRef, currentIndex, seekToAudio } = useAudio();
+  const { audios, guion: guionPath, play, isLoaded, loadingProgress, audioRef, analyserRef, dataArrayRef, timeDataArrayRef, currentIndex, seekToAudio, getTotalElapsed, getTotalDuration, audioDurations } = useAudio();
   // Cargar imágenes desde el principio (audioStarted = true para que se carguen inmediatamente)
   // El parámetro audioStarted controla cuándo se cargan las imágenes, no cuándo se muestran
   const { isLoading: imagesLoading, preloadProgress: imagesProgress, seekToImagePosition } = useGallery(track, null, null, currentIndex, true);
   const [loadingFadedOut, setLoadingFadedOut] = useState(false);
   const [autoPlayAttempted, setAutoPlayAttempted] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [currentSegmentTime, setCurrentSegmentTime] = useState(0); // Tiempo relativo al tramo actual
+  const [currentSegmentDuration, setCurrentSegmentDuration] = useState(0); // Duración del tramo actual
+  const [activeSegment, setActiveSegment] = useState(null); // Segmento activo actual
+  const [guion, setGuion] = useState(null);
   const onTriggerCallbackRef = React.useRef(null);
   const onVoiceCallbackRef = React.useRef(null);
 
@@ -135,23 +141,15 @@ const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
   const everythingReady = audioReady && imagesReady;
   const showLoading = !loadingFadedOut && (!audioReady || !imagesReady);
 
-  // Log de depuración
-  React.useEffect(() => {
-    console.log('[CroquetasContent] Estado de carga:', {
-      isLoaded,
-      loadingProgress,
-      audioReady,
-      imagesLoading,
-      imagesProgress,
-      imagesReady,
-      everythingReady,
-      autoPlayAttempted,
-      isPlaying
-    });
-  }, [isLoaded, loadingProgress, audioReady, imagesLoading, imagesProgress, imagesReady, everythingReady, autoPlayAttempted, isPlaying]);
+  // Log de depuración eliminado - innecesario en producción
 
   // Cuando todo esté listo: ocultar loading e iniciar play automáticamente
   // Solo si el usuario ya hizo clic en la croqueta (selectedTrack está establecido)
+  const playRef = React.useRef(play);
+  React.useEffect(() => {
+    playRef.current = play;
+  }, [play]);
+
   React.useEffect(() => {
     if (everythingReady && !autoPlayAttempted && !isPlaying) {
       console.log('[CroquetasContent] Todo listo, iniciando play...');
@@ -159,14 +157,14 @@ const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
       setLoadingFadedOut(true);
       
       // Iniciar play inmediatamente (el usuario ya hizo clic en la croqueta)
-      play().then(() => {
+      playRef.current().then(() => {
         console.log('[CroquetasContent] Play iniciado correctamente');
         setIsPlaying(true);
       }).catch((err) => {
         console.log('[CroquetasContent] Error en play, reintentando...', err);
         // Si falla, reintentar una vez más después de un breve delay
-      setTimeout(() => {
-          play().then(() => {
+        setTimeout(() => {
+          playRef.current().then(() => {
             console.log('[CroquetasContent] Play iniciado en reintento');
             setIsPlaying(true);
           }).catch((err2) => {
@@ -175,7 +173,7 @@ const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
         }, 300);
       });
     }
-  }, [everythingReady, autoPlayAttempted, isPlaying, play]);
+  }, [everythingReady, autoPlayAttempted, isPlaying]);
 
   // Timeout de seguridad: solo ocultar loading después de 15 segundos, NO forzar play
   // El play solo debe ocurrir cuando el usuario hace clic
@@ -191,12 +189,173 @@ const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
         loadingProgress
       });
       if (!loadingFadedOut) {
-        setLoadingFadedOut(true);
+              setLoadingFadedOut(true);
       }
       // NO forzar play aquí - solo ocultar el loading
     }, 15000);
     return () => clearTimeout(safetyTimer);
   }, [loadingFadedOut, isPlaying, autoPlayAttempted, audioReady, imagesReady, imagesProgress, loadingProgress]);
+
+  // Determinar el segmento activo basado en currentIndex
+  React.useEffect(() => {
+    if (!track?.segments || track.segments.length === 0) {
+      setActiveSegment(null);
+      return;
+    }
+    
+    const segment = track.segments.find(s => s.audioIndex === currentIndex);
+    if (segment) {
+      console.log('[CroquetasContent] Segmento activo cambiado a:', currentIndex, segment);
+      setActiveSegment(segment);
+      
+      // Actualizar duración del segmento
+      if (audioDurations && audioDurations.length > currentIndex) {
+        const segmentDuration = audioDurations[currentIndex] || 0;
+        if (segmentDuration > 0) {
+          setCurrentSegmentDuration(segmentDuration);
+        }
+      }
+    } else {
+      setActiveSegment(null);
+    }
+  }, [track, currentIndex, audioDurations]);
+
+  // Cargar guion del segmento activo
+  React.useEffect(() => {
+    if (!activeSegment) {
+      // Si no hay segmento activo, intentar usar el guion del track
+      if (track?.guion) {
+        const loadGuion = async () => {
+          try {
+            const response = await fetch(track.guion);
+            if (!response.ok) throw new Error(`Failed to load guion: ${response.status}`);
+            const text = await response.text();
+            const exportMatch = text.match(/export\s+default\s+({[\s\S]*?});?\s*$/m);
+            if (exportMatch) {
+              const objStr = exportMatch[1];
+              const guionData = new Function('return ' + objStr)();
+              console.log('[CroquetasContent] Guion cargado del track:', guionData);
+              setGuion(guionData);
+            } else {
+              setGuion(null);
+            }
+          } catch (error) {
+            console.error('[CroquetasContent] Error cargando guion del track:', error);
+            setGuion(null);
+          }
+        };
+        loadGuion();
+      } else {
+        setGuion(null);
+      }
+      return;
+    }
+    
+    // Cargar guion del segmento activo
+    if (!activeSegment.guion) {
+      console.log('[CroquetasContent] No hay guion para el segmento activo');
+      setGuion(null);
+      return;
+    }
+    
+    const loadGuion = async () => {
+      try {
+        const response = await fetch(activeSegment.guion);
+        if (!response.ok) {
+          throw new Error(`Failed to load guion: ${response.status}`);
+        }
+        const text = await response.text();
+        
+        const exportMatch = text.match(/export\s+default\s+({[\s\S]*?});?\s*$/m);
+        if (exportMatch) {
+          const objStr = exportMatch[1];
+          try {
+            const guionData = new Function('return ' + objStr)();
+            console.log('[CroquetasContent] Guion cargado para segmento', activeSegment.audioIndex, ':', guionData, 'textos:', guionData?.textos?.length);
+            setGuion(guionData);
+          } catch (parseError) {
+            console.error('[CroquetasContent] Error parseando objeto del guion:', parseError);
+            setGuion(null);
+          }
+        } else {
+          console.warn('[CroquetasContent] No se encontró export default en el guion');
+          setGuion(null);
+        }
+      } catch (error) {
+        console.error('[CroquetasContent] Error cargando guion:', error, 'path:', activeSegment.guion);
+        setGuion(null);
+      }
+    };
+
+    loadGuion();
+  }, [activeSegment, track]);
+
+  // Actualizar duration cuando el audio esté cargado
+  const getTotalDurationRef = React.useRef(getTotalDuration);
+  React.useEffect(() => {
+    getTotalDurationRef.current = getTotalDuration;
+  }, [getTotalDuration]);
+
+  React.useEffect(() => {
+    if (isLoaded && audioDurations && audioDurations.length > 0) {
+      const totalDuration = getTotalDurationRef.current();
+      if (totalDuration > 0 && totalDuration !== duration) {
+        console.log('[CroquetasContent] Actualizando duration:', totalDuration);
+        setDuration(totalDuration);
+      }
+    }
+  }, [isLoaded, audioDurations.length, duration]);
+
+  // Actualizar currentTime y tiempo del tramo actual continuamente
+  const getTotalElapsedRef = React.useRef(getTotalElapsed);
+  React.useEffect(() => {
+    getTotalElapsedRef.current = getTotalElapsed;
+  }, [getTotalElapsed]);
+
+  // Actualizar currentTime y tiempo del tramo actual
+  // IMPORTANTE: Actualizar siempre, incluso cuando no está reproduciendo, para que el seek funcione
+  React.useEffect(() => {
+    const updateTime = () => {
+      const elapsed = getTotalElapsedRef.current();
+      if (elapsed >= 0) {
+        setCurrentTime(prev => {
+          // Solo actualizar si cambió significativamente (más de 50ms) para evitar renders innecesarios
+          if (Math.abs(elapsed - prev) > 0.05) {
+            return elapsed;
+          }
+          return prev;
+        });
+        
+        // Calcular tiempo relativo al tramo actual
+        if (audioDurations && audioDurations.length > 0 && currentIndex >= 0) {
+          const previousTime = audioDurations
+            .slice(0, currentIndex)
+            .reduce((sum, dur) => sum + dur, 0);
+          const segmentTime = Math.max(0, elapsed - previousTime);
+          const segmentDuration = audioDurations[currentIndex] || 0;
+          
+          setCurrentSegmentTime(segmentTime);
+          if (segmentDuration > 0 && segmentDuration !== currentSegmentDuration) {
+            setCurrentSegmentDuration(segmentDuration);
+          }
+        }
+      } else if (!isPlaying) {
+        // Si no está reproduciendo y no hay tiempo, resetear
+        setCurrentTime(0);
+        setCurrentSegmentTime(0);
+      }
+    };
+
+    // Actualizar inmediatamente
+    updateTime();
+
+    // Si está reproduciendo, actualizar cada 100ms para suavidad
+    // Si no está reproduciendo, no necesitamos actualizar continuamente
+    if (isPlaying) {
+      const interval = setInterval(updateTime, 100);
+      return () => clearInterval(interval);
+    }
+  }, [isPlaying, currentIndex, audioDurations, currentSegmentDuration]);
   
   return (
     <>
@@ -245,11 +404,16 @@ const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
       currentAudioIndex={currentIndex}
             audioSrcs={audios}
             seekToImagePosition={seekToImagePosition}
-            setCurrentAudioIndex={(index) => seekToAudio(index, 0)}
+            setCurrentAudioIndex={(index, time = 0) => seekToAudio(index, time)}
           />
 
           {guion && (
-            <Prompt textos={guion.textos || []} />
+    <Prompt 
+              textos={guion.textos || []} 
+              currentTime={currentSegmentTime} // Usar tiempo relativo al tramo actual
+              duration={currentSegmentDuration} // Usar duración del tramo actual
+      analyser={analyserRef?.current}
+    />
           )}
 
           <BackButton onBack={onExit} />

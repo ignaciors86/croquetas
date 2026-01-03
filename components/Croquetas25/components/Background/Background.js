@@ -2,7 +2,7 @@ import React, { useRef, useEffect, useState } from 'react';
 import gsap from 'gsap';
 import './Background.scss';
 import Diagonales from './components/Diagonales/Diagonales';
-import BorderSquaresCanvas from './components/BorderSquaresCanvas/BorderSquaresCanvas';
+import CanvasRenderer from './components/CanvasRenderer/CanvasRenderer';
 import { useGallery } from '../Gallery/Gallery';
 
 const MAINCLASS = 'background';
@@ -24,19 +24,34 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
     }
   }, [isLoading, allImages.length, preloadNextImages]);
   
+  const lastImageTimeRef = useRef(0);
+  const MIN_TIME_BETWEEN_IMAGES = 1000; // 3 segundos mínimo entre imágenes
+  
   useEffect(() => {
     if (!onTriggerCallbackRef || showOnlyDiagonales) return;
     
     const createCallback = () => {
       onTriggerCallbackRef.current = (type, data = {}) => {
-      const id = `square-${Date.now()}-${Math.random()}`;
+        const now = Date.now();
+        const shouldHaveBackground = data.shouldBeSolid || false;
+        
+        // Si es una imagen y no ha pasado el tiempo mínimo, ignorar
+        if (shouldHaveBackground && (now - lastImageTimeRef.current < MIN_TIME_BETWEEN_IMAGES)) {
+          return;
+        }
+        
+        // Si es una imagen, actualizar el tiempo
+        if (shouldHaveBackground) {
+          lastImageTimeRef.current = now;
+        }
+        
+        const id = `square-${Date.now()}-${Math.random()}`;
       const lgtbColors = [
         '#FF0080', '#FF8000', '#FFFF00', '#00FF00', '#0080FF', '#8000FF',
         '#00FFFF', '#FF00FF', '#FFFFFF', '#FFB347', '#FFD700', '#C0C0C0',
       ];
       
       const intensity = data?.intensity ?? 0.5;
-      const shouldHaveBackground = data?.shouldBeSolid ?? false;
       
       // Para cuadrados sin imagen, usar color sólido que reacciona a la música
       // Si tiene datos de audio, calcular color basado en ellos
@@ -704,28 +719,26 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
     };
   }, [selectedTrack]);
 
-  // Limpiar squares fuera de pantalla periódicamente
+  // Limpiar squares fuera de pantalla y limitar número máximo (unificado)
   useEffect(() => {
     const cleanupInterval = setInterval(() => {
       setSquares(prev => {
         const viewportWidth = window.innerWidth;
         const viewportHeight = window.innerHeight;
-        // Margen adicional para considerar elementos que están saliendo
         const margin = 200;
         
-        const visibleSquares = prev.filter(square => {
+        // Primero, limpiar squares fuera de pantalla o invisibles
+        let visibleSquares = prev.filter(square => {
           const el = squareRefs.current[square.id];
-          if (!el) return false; // Si no hay elemento, eliminar del estado
+          if (!el) return false;
           
           const rect = el.getBoundingClientRect();
-          // Verificar si el elemento está completamente fuera de la pantalla (con margen)
           const isOutOfBounds = 
             rect.right < -margin ||
             rect.left > viewportWidth + margin ||
             rect.bottom < -margin ||
             rect.top > viewportHeight + margin;
           
-          // También verificar si la opacidad es 0 (ya desapareció visualmente)
           const computedStyle = window.getComputedStyle(el);
           const opacity = parseFloat(computedStyle.opacity) || 0;
           
@@ -744,27 +757,17 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
             }
             
             delete squareRefs.current[square.id];
-            return false; // Eliminar del array
+            return false;
           }
           
-          return true; // Mantener en el array
+          return true;
         });
         
-        return visibleSquares;
-      });
-    }, 2000); // Verificar cada 2 segundos
-    
-    return () => clearInterval(cleanupInterval);
-  }, []);
-  
-  // Limitar número máximo de squares (fallback)
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setSquares(prev => {
-        if (prev.length > MAX_SQUARES) {
-          const squaresToRemoveCount = prev.length - MAX_SQUARES;
+        // Luego, limitar número máximo si es necesario
+        if (visibleSquares.length > MAX_SQUARES) {
+          const squaresToRemoveCount = visibleSquares.length - MAX_SQUARES;
           for (let i = 0; i < squaresToRemoveCount; i++) {
-            const square = prev[i];
+            const square = visibleSquares[i];
             if (animationTimelinesRef.current[square.id]) {
               animationTimelinesRef.current[square.id].kill();
               delete animationTimelinesRef.current[square.id];
@@ -781,12 +784,14 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
               delete squareRefs.current[square.id];
             }
           }
-          return prev.slice(squaresToRemoveCount);
+          visibleSquares = visibleSquares.slice(squaresToRemoveCount);
         }
-        return prev;
+        
+        return visibleSquares;
       });
-    }, 10000);
-    return () => clearInterval(interval);
+    }, 2000); // Verificar cada 2 segundos (unificado con limpieza)
+    
+    return () => clearInterval(cleanupInterval);
   }, []);
 
   return (
@@ -795,24 +800,27 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
         squares={showOnlyDiagonales ? [] : squares}
         analyserRef={analyserRef}
         dataArrayRef={dataArrayRef}
-        isInitialized={showOnlyDiagonales ? true : isInitialized}
+        isInitialized={showOnlyDiagonales ? (analyserRef?.current ? true : false) : isInitialized}
         onVoiceCallbackRef={showOnlyDiagonales ? null : onVoiceCallbackRef}
       />
-      {/* Canvas único para cuadros con borde */}
-      {!showOnlyDiagonales && (
-        <BorderSquaresCanvas
-          squares={squares}
-          analyserRef={analyserRef}
-          dataArrayRef={dataArrayRef}
-          animationTimelinesRef={animationTimelinesRef}
-        />
-      )}
+        {/* Canvas unificado para cuadrados con borde */}
+        {!showOnlyDiagonales && (
+          <CanvasRenderer
+            squares={squares}
+            diagonales={[]} // Las diagonales se renderizan en DOM por Diagonales
+            analyserRef={analyserRef}
+            dataArrayRef={dataArrayRef}
+            selectedTrack={selectedTrack}
+            animationTimelinesRef={animationTimelinesRef}
+            diagonalRotationsRef={null} // Por ahora null, las diagonales se renderizan en DOM
+          />
+        )}
       {/* Blur overlay permanente sobre las diagonales - backdrop-filter difumina lo que está detrás */}
       <div className={`${MAINCLASS}__blurOverlay`} />
       {!showOnlyDiagonales && squares.map(square => {
         const isTarget = square.isTarget;
         
-        // Solo renderizar cuadrados con imagen (los de borde se renderizan en BorderSquaresCanvas)
+        // Solo renderizar cuadrados con imagen (los de borde se renderizan en CanvasRenderer)
         if (!isTarget) {
           // Crear un div invisible para que GSAP pueda animarlo y sincronizar con el canvas
           return (
