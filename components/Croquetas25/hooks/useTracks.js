@@ -77,7 +77,7 @@ export const useTracks = () => {
         tracksMap.forEach((track, trackKey) => {
           // Detectar si es Croquetas25 (Nachitos de Nochevieja)
           const normalizedTrackName = normalizeName(track.name);
-          const isCroquetas25 = track.name && (
+          const isMainCroqueta = track.name && (
             track.name.toLowerCase().includes('croquetas25') ||
             normalizedTrackName === 'croquetas25' ||
             normalizedTrackName === 'nachitos-de-nochevieja' ||
@@ -88,7 +88,7 @@ export const useTracks = () => {
           let imagesArray = [];
           let subfolderOrder = [];
 
-          if (isCroquetas25) {
+          if (isMainCroqueta) {
             // SOLO PARA CROQUETAS25: Intercalar imágenes de TODOS los otros tracks (colecciones)
             const otherTracks = Array.from(tracksMap.values())
               .filter(t => t.id !== track.id && t.imagesBySubfolder.size > 0)
@@ -277,7 +277,7 @@ export const useTracks = () => {
             subfolderToAudioIndex: subfolderToAudioIndex,
             guionesBySubfolder: guionesBySubfolder,
             guion: track.guionesBySubfolder.get('__root__')?.[0]?.path || null,
-            isCroquetas25: isCroquetas25,
+            isMainCroqueta: isMainCroqueta,
             segments: segments // Agregar los segments al finalTrack
           };
 

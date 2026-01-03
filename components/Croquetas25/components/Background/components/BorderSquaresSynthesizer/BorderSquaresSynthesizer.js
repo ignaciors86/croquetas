@@ -156,7 +156,6 @@ const BorderSquaresSynthesizer = ({
       
       // Si no está envuelto, Background.js puede haber recreado el callback
       // Necesitamos envolverlo de nuevo
-      console.log('[BorderSquaresSynthesizer] Callback no envuelto, envolviendo...');
 
       // Guardar el callback original de Background.js
       const originalCallback = onTriggerCallbackRef.current;
@@ -181,7 +180,6 @@ const BorderSquaresSynthesizer = ({
 
       // Reemplazar el callback con nuestro wrapper
       onTriggerCallbackRef.current = wrapperCallback;
-      console.log('[BorderSquaresSynthesizer] Callback envuelto correctamente');
     }, 100); // Verificar cada 100ms continuamente
 
     // Manejar eventos de voz de manera similar - intervalo continuo
@@ -197,7 +195,6 @@ const BorderSquaresSynthesizer = ({
         
         // Si no está envuelto, Background.js puede haber recreado el callback
         // Necesitamos envolverlo de nuevo
-        console.log('[BorderSquaresSynthesizer] Voice callback no envuelto, envolviendo...');
 
         const originalVoiceCallback = onVoiceCallbackRef.current;
         
@@ -252,7 +249,6 @@ const BorderSquaresSynthesizer = ({
 
         voiceHandler.__synthesizerWrapped = true;
         onVoiceCallbackRef.current = voiceHandler;
-        console.log('[BorderSquaresSynthesizer] Voice callback envuelto correctamente');
       }, 100); // Verificar cada 100ms continuamente
     }
 
@@ -502,8 +498,8 @@ const BorderSquaresSynthesizer = ({
         const finalWidth = viewportWidth * scale;
         const finalHeight = viewportHeight * scale;
         
-        // Debug: verificar que el tamaño sea correcto cuando está cerca de 1.0
-        if (progress > 0.95 && progress < 1.0) {
+        // Debug: verificar que el tamaño sea correcto cuando está cerca de 1.0 (solo en desarrollo)
+        if (process.env.NODE_ENV === 'development' && progress > 0.95 && progress < 1.0) {
           console.log('[BorderSquaresSynthesizer] Cuadrado cerca del final:', {
             progress,
             scale,
@@ -556,10 +552,11 @@ const BorderSquaresSynthesizer = ({
       className="border-squares-synthesizer"
       style={{
         position: 'absolute',
-        top: 0,
-        left: 0,
+        top: '50%',
+        left: '50%',
         width: '100%',
         height: '100%',
+        transform: 'translate(-50%, -50%)',
         pointerEvents: 'none',
         zIndex: 20
       }}

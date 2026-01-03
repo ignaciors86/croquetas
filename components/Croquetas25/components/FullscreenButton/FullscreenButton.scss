@@ -1,0 +1,48 @@
+.fullscreenButton {
+  position: fixed;
+  bottom: 0;
+  right: 0;
+  z-index: 5000;
+  pointer-events: auto;
+}
+
+.fullscreenButton__wrapper {
+  position: absolute;
+  bottom: 2dvh;
+  right: 2vw;
+  width: 15vw;
+  height: 15vw;
+  max-width: 15vw;
+  max-height: 15vw;
+  will-change: transform;
+  transform-origin: center center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  
+  @media (orientation: portrait) {
+    width: 30vw;
+    height: 30vw;
+    max-width: 30vw;
+    max-height: 30vw;
+  }
+}
+
+.fullscreenButton__croqueta {
+  width: 12vw;
+  height: 12vw;
+  min-width: 10vw;
+  min-height: 10vw;
+  max-width: 15vw;
+  max-height: 15vw;
+  
+  @media (orientation: portrait) {
+    width: 24vw;
+    height: 24vw;
+    min-width: 20vw;
+    min-height: 20vw;
+    max-width: 30vw;
+    max-height: 30vw;
+  }
+}
+

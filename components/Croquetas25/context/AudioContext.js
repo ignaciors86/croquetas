@@ -1798,7 +1798,7 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
     const wasPlaying = isPlaying && !audio.paused;
     
     if (index === currentIndex) {
-      // Mismo audio, solo cambiar el tiempo
+      // Mismo audio, solo cambiar el tiempo - NO pausar
       if (audio.readyState >= 2) {
         audio.currentTime = targetTime;
       } else {
@@ -1816,7 +1816,9 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
       return;
     }
     
-    // Cambiar de audio
+    // Cambiar de audio - mantener el estado de reproducción
+    const wasActuallyPlaying = wasPlaying;
+    
     if (!audio.paused) {
       // Fade out breve del actual
       if (fadeOutTweenRef.current) {
@@ -1825,7 +1827,7 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
       
       fadeOutTweenRef.current = gsap.to(audio, {
         volume: 0,
-        duration: 0.3, // Fade out breve
+        duration: 0.2, // Fade out más rápido para seek
         ease: 'power2.in',
         onComplete: () => {
           audio.pause();
@@ -1835,25 +1837,41 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
           setCurrentIndex(index);
           fadeOutTweenRef.current = null;
           
-          // Esperar a que el nuevo audio esté listo
+          // Esperar a que el nuevo audio esté listo y reanudar si estaba reproduciendo
           const waitAndPlay = () => {
             const newAudio = currentAudioRef.current;
-            if (newAudio && newAudio.readyState >= 2) {
-              if (targetTime > 0) {
-                newAudio.currentTime = targetTime;
-              }
-              if (wasPlaying) {
-                newAudio.play().then(() => {
-                  newAudio.volume = 0;
-                  fadeInTweenRef.current = gsap.to(newAudio, {
-                    volume: 1,
-                    duration: 0.4,
-                    ease: 'power2.out',
-                    onComplete: () => {
-                      fadeInTweenRef.current = null;
-                    }
+            if (newAudio) {
+              if (newAudio.readyState >= 2) {
+                if (targetTime > 0) {
+                  newAudio.currentTime = targetTime;
+                }
+                // SIEMPRE reanudar si estaba reproduciendo antes del seek
+                if (wasActuallyPlaying) {
+                  newAudio.play().then(() => {
+                    newAudio.volume = 0;
+                    fadeInTweenRef.current = gsap.to(newAudio, {
+                      volume: 1,
+                      duration: 0.3,
+                      ease: 'power2.out',
+                      onComplete: () => {
+                        fadeInTweenRef.current = null;
+                      }
+                    });
+                  }).catch(err => {
+                    console.warn('[AudioContext] Error playing after seek:', err);
+                    // Reintentar una vez
+                    setTimeout(() => {
+                      if (newAudio && wasActuallyPlaying) {
+                        newAudio.play().catch(() => {});
+                      }
+                    }, 100);
                   });
-                }).catch(err => console.warn('[AudioContext] Error playing after seek:', err));
+                } else if (targetTime > 0) {
+                  // Si estaba pausado, solo establecer el tiempo
+                  newAudio.currentTime = targetTime;
+                }
+              } else {
+                setTimeout(waitAndPlay, 50);
               }
             } else {
               setTimeout(waitAndPlay, 50);
@@ -1864,15 +1882,27 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
         }
       });
     } else {
-      // Si está pausado, cambiar directamente
-      // Actualizar el ref ANTES de setCurrentIndex para que handleEnded use el valor correcto
+      // Si está pausado, cambiar directamente sin fade
       currentIndexRef.current = index;
       setCurrentIndex(index);
       if (targetTime > 0) {
         setTimeout(() => {
           const newAudio = currentAudioRef.current;
-          if (newAudio && newAudio.readyState >= 2) {
-            newAudio.currentTime = targetTime;
+          if (newAudio) {
+            if (newAudio.readyState >= 2) {
+              newAudio.currentTime = targetTime;
+            } else {
+              // Esperar a que esté listo
+              const setTimeWhenReady = () => {
+                if (newAudio.readyState >= 2) {
+                  newAudio.currentTime = targetTime;
+                  newAudio.removeEventListener('canplay', setTimeWhenReady);
+                  newAudio.removeEventListener('loadedmetadata', setTimeWhenReady);
+                }
+              };
+              newAudio.addEventListener('canplay', setTimeWhenReady);
+              newAudio.addEventListener('loadedmetadata', setTimeWhenReady);
+            }
           }
         }, 100);
       }

@@ -155,113 +155,89 @@ const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstance
   }, [validTextos, duration]);
   
   // Determinar qué texto mostrar según el tiempo actual
+  // IMPORTANTE: Usar un ref para evitar que cambios frecuentes de currentTime maten el timeline
+  const lastCheckedTimeRef = useRef(-1);
+  const checkIntervalRef = useRef(null);
+  
   useEffect(() => {
+    // Limpiar intervalo anterior si existe
+    if (checkIntervalRef.current) {
+      clearInterval(checkIntervalRef.current);
+    }
+    
     if (textTimings.length === 0) {
       if (validTextos.length > 0) {
-        console.log('[Prompt] textTimings vacío pero hay textos válidos, estableciendo índice 0');
         setCurrentTextIndex(0);
       } else {
-        console.log('[Prompt] No hay textos válidos');
         setCurrentTextIndex(-1);
       }
       return;
     }
     
     if (!duration || duration === 0) {
-      console.log('[Prompt] duration es 0, estableciendo índice 0');
       setCurrentTextIndex(0);
       return;
     }
     
-    // Encontrar el texto correspondiente al tiempo actual
-    let foundIndex = -1;
-    
-    // Buscar el texto que corresponde al tiempo actual
-    for (let i = 0; i < textTimings.length; i++) {
-      const timing = textTimings[i];
-      // Incluir el endTime en el rango para evitar gaps
-      if (currentTime >= timing.startTime && currentTime <= timing.endTime) {
-        foundIndex = i;
-        break;
-      }
-    }
-    
-    // Si no se encontró ningún texto, verificar si estamos antes del primero o después del último
-    if (foundIndex === -1 && textTimings.length > 0) {
-      const firstTiming = textTimings[0];
-      const lastTiming = textTimings[textTimings.length - 1];
+    // Función para determinar el índice del texto
+    const findTextIndex = (time) => {
+      let foundIndex = -1;
       
-      if (currentTime < firstTiming.startTime) {
-        // Aún no ha empezado el primer texto
-        foundIndex = -1;
-      } else if (currentTime > lastTiming.endTime) {
-        // Ya pasó el último texto - verificar si han pasado más de 10 segundos
-        const timeSinceEnd = currentTime - lastTiming.endTime;
-        if (timeSinceEnd > 10) {
-          foundIndex = -1; // Ocultar después de 10 segundos
-        } else {
-          // Mantener el último texto visible hasta que pasen 10 segundos
-          foundIndex = textTimings.length - 1;
-        }
-      } else {
-        // Estamos en un gap entre textos
-        // Si hay un texto visible actualmente, mantenerlo visible hasta que aparezca el siguiente
-        // Solo ocultar si no hay texto visible y estamos en un gap
-        if (currentTextIndex >= 0) {
-          // Hay un texto visible, mantenerlo hasta que aparezca el siguiente
-          // Buscar el siguiente texto que debe aparecer
-          let nextTextIndex = -1;
-          for (let i = 0; i < textTimings.length; i++) {
-            const timing = textTimings[i];
-            if (currentTime < timing.startTime) {
-              nextTextIndex = i;
-              break;
-            }
-          }
-          
-          // Mantener el texto actual visible hasta que aparezca el siguiente
-          // No ocultar en gaps - el timeline se encargará de la animación de salida
-          if (nextTextIndex >= 0) {
-            const nextTiming = textTimings[nextTextIndex];
-            const timeUntilNext = nextTiming.startTime - currentTime;
-            // Si el siguiente texto está a menos de 10 segundos, mantener el actual visible
-            // Si está a más de 10 segundos, ocultar el actual
-            if (timeUntilNext <= 10) {
-              // Mantener el texto actual visible
-              foundIndex = currentTextIndex;
-            } else {
-              // Han pasado más de 10 segundos sin que aparezca el siguiente, ocultar
-              foundIndex = -1;
-            }
-          } else {
-            // No hay siguiente texto, mantener el actual visible
-            foundIndex = currentTextIndex;
-          }
-        } else {
-          // No hay texto visible, buscar el siguiente
-          for (let i = 0; i < textTimings.length; i++) {
-            const timing = textTimings[i];
-            if (currentTime < timing.startTime) {
-              // Este es el siguiente texto que aparecerá, pero aún no ha empezado
-              foundIndex = -1;
-              break;
-            }
-          }
+      // Buscar el texto que corresponde al tiempo actual
+      for (let i = 0; i < textTimings.length; i++) {
+        const timing = textTimings[i];
+        if (time >= timing.startTime && time <= timing.endTime) {
+          foundIndex = i;
+          break;
         }
       }
-    }
+      
+      // Si no se encontró, verificar casos especiales
+      if (foundIndex === -1 && textTimings.length > 0) {
+        const firstTiming = textTimings[0];
+        const lastTiming = textTimings[textTimings.length - 1];
+        
+        if (time < firstTiming.startTime) {
+          foundIndex = -1;
+        } else if (time > lastTiming.endTime) {
+          const timeSinceEnd = time - lastTiming.endTime;
+          foundIndex = timeSinceEnd > 10 ? -1 : textTimings.length - 1;
+        } else if (currentTextIndex >= 0) {
+          // Mantener el texto actual si estamos en un gap
+          foundIndex = currentTextIndex;
+        }
+      }
+      
+      return foundIndex;
+    };
     
-    // Actualizar solo si cambió el índice
+    // Verificar inmediatamente
+    const foundIndex = findTextIndex(currentTime);
     if (foundIndex !== currentTextIndex) {
-      console.log('[Prompt] Cambiando texto:', {
-        from: currentTextIndex,
-        to: foundIndex,
-        currentTime: currentTime.toFixed(2),
-        duration: duration.toFixed(2)
-      });
       setCurrentTextIndex(foundIndex);
     }
-  }, [currentTime, duration, textTimings, validTextos.length]);
+    lastCheckedTimeRef.current = currentTime;
+    
+    // Verificar periódicamente (cada 200ms) en lugar de en cada cambio de currentTime
+    // Esto evita que se ejecute demasiado frecuentemente y bloquee el timeline
+    checkIntervalRef.current = setInterval(() => {
+      const time = currentTime;
+      // Solo verificar si el tiempo cambió significativamente (más de 100ms)
+      if (Math.abs(time - lastCheckedTimeRef.current) > 0.1) {
+        const foundIndex = findTextIndex(time);
+        if (foundIndex !== currentTextIndex) {
+          setCurrentTextIndex(foundIndex);
+        }
+        lastCheckedTimeRef.current = time;
+      }
+    }, 200);
+    
+    return () => {
+      if (checkIntervalRef.current) {
+        clearInterval(checkIntervalRef.current);
+      }
+    };
+  }, [duration, textTimings, validTextos.length]); // Remover currentTime de dependencias
   
   // Función auxiliar para actualizar la posición del timeline usando useRef para evitar dependencias
   const updateTimelinePositionRef = useRef((tl, relativeTime, timing, hadPreviousText) => {
@@ -571,23 +547,30 @@ const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstance
         });
       }
     } else {
-      // Mismo texto, solo actualizar posición del timeline
-      if (timelineRef.current && timing) {
-        const relativeTime = currentTime - timing.startTime;
-        const wasVisible = lastTextIndexRef.current >= 0;
-        updateTimelinePositionRef.current(timelineRef.current, relativeTime, timing, wasVisible);
-      }
+      // Mismo texto, no hacer nada aquí - el timeline se sincronizará en el useEffect separado
+      // Esto evita que se mate el timeline cuando solo cambia currentTime
     }
-  }, [currentTextIndex, currentTime, textTimings, validTextos]);
+  }, [currentTextIndex, textTimings, validTextos]); // Remover currentTime de dependencias
   
-  // Sincronizar el timeline con el tiempo actual del audio
+  // Sincronizar el timeline con el tiempo actual del audio (separado para no bloquear)
+  // Usar requestAnimationFrame para evitar bloquear cuando currentTime cambia frecuentemente
   useEffect(() => {
-    if (timelineRef.current && currentTextIndex !== -1) {
+    if (timelineRef.current && currentTextIndex !== -1 && textTimings.length > 0) {
       const timing = textTimings[currentTextIndex];
       if (timing) {
-        const relativeTime = currentTime - timing.startTime;
-        const wasVisible = lastTextIndexRef.current >= 0; // Asumir que si había un texto anterior, estaba visible
-        updateTimelinePositionRef.current(timelineRef.current, relativeTime, timing, wasVisible);
+        // Usar requestAnimationFrame para sincronizar sin bloquear
+        const rafId = requestAnimationFrame(() => {
+          if (timelineRef.current && currentTextIndex !== -1) {
+            const timing = textTimings[currentTextIndex];
+            if (timing) {
+              const relativeTime = currentTime - timing.startTime;
+              const wasVisible = lastTextIndexRef.current >= 0;
+              updateTimelinePositionRef.current(timelineRef.current, relativeTime, timing, wasVisible);
+            }
+          }
+        });
+        
+        return () => cancelAnimationFrame(rafId);
       }
     }
   }, [currentTime, currentTextIndex, textTimings]);

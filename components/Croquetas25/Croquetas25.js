@@ -11,6 +11,7 @@ import Seek from './components/Seek/Seek';
 import Prompt from './components/Prompt/Prompt';
 import BackButton from './components/BackButton/BackButton';
 import KITTLoader from './components/KITTLoader/KITTLoader';
+import FullscreenButton from './components/FullscreenButton/FullscreenButton';
 import { useGallery } from './components/Gallery/Gallery';
 
 const normalizeId = (id) => (id || '').toLowerCase().replace(/\s+/g, '-');
@@ -63,7 +64,7 @@ const Croquetas25 = () => {
   };
 
   const handleExit = () => {
-    setSelectedTrack(null);
+            setSelectedTrack(null);
     setIsPlaying(false);
     window.history.replaceState({}, '', '/');
   };
@@ -121,11 +122,36 @@ const Croquetas25 = () => {
 
 const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
   const { audios, guion: guionPath, play, pause: pauseAudio, isLoaded, loadingProgress, audioRef, analyserRef, dataArrayRef, timeDataArrayRef, currentIndex, seekToAudio, getTotalElapsed, getTotalDuration, audioDurations } = useAudio();
+  
+  // Manejar resize para recalcular todo
+  React.useEffect(() => {
+    const handleResize = () => {
+      // Forzar recálculo de canvas y elementos
+      // Los componentes individuales ya tienen sus propios listeners de resize
+      // pero podemos disparar un evento personalizado si es necesario
+      window.dispatchEvent(new Event('croquetas-resize'));
+    };
+
+    window.addEventListener('resize', handleResize);
+    window.addEventListener('orientationchange', handleResize);
+      
+      return () => {
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('orientationchange', handleResize);
+    };
+  }, []);
+  
+  // Refs para manejar pause/play con clic y mantener pulsado
+  const wasPlayingBeforeHoldRef = React.useRef(false);
+  const holdTimeoutRef = React.useRef(null);
+  const isHoldingRef = React.useRef(false);
+  const mouseDownTimeRef = React.useRef(0);
   // Cargar imágenes desde el principio (audioStarted = true para que se carguen inmediatamente)
   // El parámetro audioStarted controla cuándo se cargan las imágenes, no cuándo se muestran
   const { isLoading: imagesLoading, preloadProgress: imagesProgress, seekToImagePosition } = useGallery(track, null, null, currentIndex, true);
   const [loadingFadedOut, setLoadingFadedOut] = useState(false);
   const [autoPlayAttempted, setAutoPlayAttempted] = useState(false);
+  const [seekLoading, setSeekLoading] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [currentSegmentTime, setCurrentSegmentTime] = useState(0); // Tiempo relativo al tramo actual
@@ -137,9 +163,12 @@ const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
 
   const combinedProgress = Math.round((imagesProgress + loadingProgress) / 2);
   const audioReady = isLoaded && loadingProgress >= 50;
+  // Asegurar que el loader se muestre si las imágenes aún no han empezado a cargar
+  // o si están cargando pero el progreso es bajo
   const imagesReady = !imagesLoading && imagesProgress >= 10;
   const everythingReady = audioReady && imagesReady;
-  const showLoading = !loadingFadedOut && (!audioReady || !imagesReady);
+  // Mostrar loading si no está todo listo O si está en proceso de carga (incluso si imagesProgress es 0)
+  const showLoading = (!loadingFadedOut && (!audioReady || !imagesReady || imagesLoading)) || seekLoading;
 
   // Log de depuración eliminado - innecesario en producción
 
@@ -213,9 +242,9 @@ const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
         const segmentDuration = audioDurations[currentIndex] || 0;
         if (segmentDuration > 0) {
           setCurrentSegmentDuration(segmentDuration);
-        }
-      }
-    } else {
+            }
+          }
+        } else {
       setActiveSegment(null);
     }
   }, [track, currentIndex, audioDurations]);
@@ -236,21 +265,21 @@ const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
               const guionData = new Function('return ' + objStr)();
               console.log('[CroquetasContent] Guion cargado del track:', guionData);
               setGuion(guionData);
-            } else {
+      } else {
               setGuion(null);
             }
-          } catch (error) {
+      } catch (error) {
             console.error('[CroquetasContent] Error cargando guion del track:', error);
             setGuion(null);
           }
         };
         loadGuion();
-      } else {
+            } else {
         setGuion(null);
       }
       return;
     }
-    
+
     // Cargar guion del segmento activo
     if (!activeSegment.guion) {
       console.log('[CroquetasContent] No hay guion para el segmento activo');
@@ -277,7 +306,7 @@ const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
             console.error('[CroquetasContent] Error parseando objeto del guion:', parseError);
             setGuion(null);
           }
-    } else {
+            } else {
           console.warn('[CroquetasContent] No se encontró export default en el guion');
           setGuion(null);
         }
@@ -357,8 +386,97 @@ const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
     }
   }, [isPlaying, currentIndex, audioDurations, currentSegmentDuration]);
   
+  // Handlers para pause/play con clic y mantener pulsado
+  const handleMouseDown = React.useCallback((e) => {
+    // Ignorar clics en elementos interactivos
+    const target = e.target;
+    if (target.closest('button, a, input, [role="button"], .croquetas25__seek, .croquetas25__back-button, .seek, .seek__progressContainer, .seek__progressBar')) {
+      return;
+    }
+    
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Guardar el estado de reproducción actual ANTES de cualquier cambio
+    wasPlayingBeforeHoldRef.current = isPlaying;
+    isHoldingRef.current = true;
+    mouseDownTimeRef.current = Date.now();
+    
+    // Si está reproduciendo, pausar inmediatamente (para modo "mantener pulsado")
+    if (isPlaying) {
+      pauseAudio().then(() => {
+        setIsPlaying(false);
+      }).catch(err => console.error('[CroquetasContent] Error pausando:', err));
+    }
+    
+    // Configurar timeout para detectar si es un clic simple o mantener pulsado
+    holdTimeoutRef.current = setTimeout(() => {
+      // Si después de 200ms sigue pulsado, es "mantener pulsado" (story mode)
+      // Ya pausamos arriba, así que no hacer nada más
+    }, 200);
+  }, [isPlaying, pauseAudio, setIsPlaying]);
+  
+  const handleMouseUp = React.useCallback((e) => {
+    // Ignorar clics en elementos interactivos
+    const target = e.target;
+    if (target.closest('button, a, input, [role="button"], .croquetas25__seek, .croquetas25__back-button, .seek, .seek__progressContainer, .seek__progressBar')) {
+      return;
+    }
+    
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const wasHolding = isHoldingRef.current;
+    const wasPlayingBefore = wasPlayingBeforeHoldRef.current;
+    const holdDuration = Date.now() - mouseDownTimeRef.current;
+    
+    isHoldingRef.current = false;
+    
+    // Limpiar timeout si existe
+    if (holdTimeoutRef.current) {
+      clearTimeout(holdTimeoutRef.current);
+      holdTimeoutRef.current = null;
+    }
+    
+    // Si fue un hold (más de 200ms), reanudar al soltar si estaba reproduciendo antes
+    if (wasHolding && holdDuration > 200 && wasPlayingBefore) {
+      // Reanudar solo si estaba reproduciendo antes
+      play().then(() => {
+        setIsPlaying(true);
+      }).catch(err => console.error('[CroquetasContent] Error reanudando:', err));
+    } else if (wasHolding && holdDuration <= 200) {
+      // Si fue un clic rápido (menos de 200ms), toggle play/pause
+      if (wasPlayingBefore) {
+        // Estaba reproduciendo, ahora está pausado (por el mousedown), reanudar (toggle)
+        play().then(() => {
+          setIsPlaying(true);
+        }).catch(err => console.error('[CroquetasContent] Error reanudando:', err));
+      } else {
+        // Estaba pausado, iniciar reproducción
+        play().then(() => {
+          setIsPlaying(true);
+        }).catch(err => console.error('[CroquetasContent] Error reproduciendo:', err));
+      }
+    }
+  }, [isPlaying, pauseAudio, play, setIsPlaying]);
+  
+  // Handlers para touch (móvil)
+  const handleTouchStart = React.useCallback((e) => {
+    handleMouseDown(e);
+  }, [handleMouseDown]);
+  
+  const handleTouchEnd = React.useCallback((e) => {
+    handleMouseUp(e);
+  }, [handleMouseUp]);
+  
   return (
-    <>
+    <div 
+      onMouseDown={handleMouseDown}
+      onMouseUp={handleMouseUp}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+      style={{ width: '100%', height: '100%', position: 'relative' }}
+    >
     <Background 
         selectedTrack={track}
       analyserRef={analyserRef}
@@ -407,6 +525,7 @@ const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
             audioSrcs={audios}
             seekToImagePosition={seekToImagePosition}
             setCurrentAudioIndex={(index, time = 0) => seekToAudio(index, time)}
+            onSeekLoading={setSeekLoading}
           />
 
           {guion && (
@@ -421,7 +540,10 @@ const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
           <BackButton onBack={onExit} />
         </>
       )}
-    </>
+
+      {/* Botón de pantalla completa */}
+      <FullscreenButton />
+    </div>
   );
 };
 

@@ -1,0 +1,53 @@
+<svg 
+  viewBox="0 0 200 120" 
+  preserveAspectRatio="xMidYMid meet"
+  xmlns="http://www.w3.org/2000/svg"
+>
+  <path
+    d="M 30 60 
+       Q 25 35, 35 20 
+       Q 45 10, 65 15 
+       Q 85 20, 100 18 
+       Q 115 16, 130 22 
+       Q 145 28, 160 35 
+       Q 175 42, 170 60 
+       Q 165 78, 155 90 
+       Q 145 102, 130 100 
+       Q 115 98, 100 95 
+       Q 85 92, 70 88 
+       Q 55 84, 45 75 
+       Q 35 66, 30 60 Z"
+    fill="currentColor"
+    fillOpacity="0"
+    pointerEvents="all"
+  />
+  <path
+    d="M 30 60 
+       Q 25 35, 35 20 
+       Q 45 10, 65 15 
+       Q 85 20, 100 18 
+       Q 115 16, 130 22 
+       Q 145 28, 160 35 
+       Q 175 42, 170 60 
+       Q 165 78, 155 90 
+       Q 145 102, 130 100 
+       Q 115 98, 100 95 
+       Q 85 92, 70 88 
+       Q 55 84, 45 75 
+       Q 35 66, 30 60 Z"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.5"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    pointerEvents="none"
+  />
+  <path d="M 55 28 Q 52 26, 55 24 Q 58 26, 55 28" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
+  <path d="M 85 22 Q 82 20, 85 18 Q 88 20, 85 22" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
+  <path d="M 115 30 Q 112 28, 115 26 Q 118 28, 115 30" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
+  <path d="M 145 38 Q 142 36, 145 34 Q 148 36, 145 38" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
+  <path d="M 65 72 Q 62 70, 65 68 Q 68 70, 65 72" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
+  <path d="M 95 78 Q 92 76, 95 74 Q 98 76, 95 78" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
+  <path d="M 125 82 Q 122 80, 125 78 Q 128 80, 125 82" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
+</svg>
+

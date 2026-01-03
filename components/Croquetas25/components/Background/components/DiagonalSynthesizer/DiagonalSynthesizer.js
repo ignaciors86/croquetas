@@ -152,101 +152,113 @@ const DiagonalSynthesizer = ({
     console.log('[DiagonalSynthesizer] Diagonales iniciales creadas:', initialDiagonales.length);
   }, []);
 
-  // Escuchar eventos de voz para generar nuevas diagonales
-  useEffect(() => {
-    if (!onVoiceCallbackRef) return;
-
-    // Función para procesar eventos del sintetizador
-    const handleVoiceEvent = (intensity = 0.5, voiceEnergy = 0) => {
-      const now = Date.now();
-      
-      // Actualizar intensidad y energía de voz actuales para reactividad continua
-      currentAudioIntensityRef.current = intensity;
-      currentVoiceEnergyRef.current = voiceEnergy;
-      
-      // Usar voiceEnergy como indicador adicional - si hay energía de voz significativa, ser más permisivo
-      const hasSignificantVoice = voiceEnergy > 10;
-      const effectiveIntensity = hasSignificantVoice ? Math.max(intensity, 0.15) : intensity;
-      
-      // DEBUG: Log para verificar que se están recibiendo eventos
-      if (diagonalEventsRef.current.length < 10) {
+  // Función para procesar eventos del sintetizador - definida con useCallback para poder usarla como dependencia
+  const handleVoiceEvent = useCallback((intensity = 0.5, voiceEnergy = 0) => {
+    const now = Date.now();
+    
+    // Actualizar intensidad y energía de voz actuales para reactividad continua
+    currentAudioIntensityRef.current = intensity;
+    currentVoiceEnergyRef.current = voiceEnergy;
+    
+    // Usar voiceEnergy como indicador adicional - si hay energía de voz significativa, ser más permisivo
+    const hasSignificantVoice = voiceEnergy > 10;
+    const effectiveIntensity = hasSignificantVoice ? Math.max(intensity, 0.15) : intensity;
+    
+    // DEBUG: Log cuando se generan diagonales o cuando debería pero no hay
+    if (effectiveIntensity >= MIN_INTENSITY_THRESHOLD || hasSignificantVoice) {
+      if (diagonalEventsRef.current.length === 0 || Math.random() < 0.05) { // Solo 5% de las veces para no saturar
         console.log('[DiagonalSynthesizer] handleVoiceEvent:', {
           intensity,
           voiceEnergy,
           effectiveIntensity,
-          hasSignificantVoice,
           threshold: MIN_INTENSITY_THRESHOLD,
           aboveThreshold: effectiveIntensity >= MIN_INTENSITY_THRESHOLD || hasSignificantVoice,
+          timeSinceLast: now - lastDiagonalTimeRef.current,
+          minTimeBetween: MIN_TIME_BETWEEN_DIAGONALS,
           currentDiagonals: diagonalEventsRef.current.length
         });
       }
-      
-      // Filtrar por umbral de intensidad mínimo (más permisivo si hay energía de voz)
-      if (effectiveIntensity < MIN_INTENSITY_THRESHOLD && !hasSignificantVoice) {
-        // No generar nueva diagonal, pero la reactividad continua se encargará de desvanecer las existentes
-        return;
-      }
-      
-      // Filtrar por tiempo mínimo entre diagonales
-      if (now - lastDiagonalTimeRef.current < MIN_TIME_BETWEEN_DIAGONALS) {
-        return; // Ignorar si no ha pasado el tiempo mínimo
-      }
-      
-      // Actualizar el tiempo del último cuadrado generado
-      lastDiagonalTimeRef.current = now;
-      
-      // Obtener el ángulo actual de la última diagonal
-      let currentAngle = lastDiagonalAngleRef.current;
-      if (diagonalEventsRef.current.length > 0) {
-        const lastDiag = diagonalEventsRef.current[diagonalEventsRef.current.length - 1];
-        const elapsed = now - lastDiag.startTime;
-        const rotationSpeed = 360 / (BASE_DURATION / lastDiag.speed);
-        const rotation = (elapsed / 1000) * rotationSpeed;
-        currentAngle = (lastDiag.baseAngle + rotation) % 360;
-      }
-      
-      lastDiagonalAngleRef.current = currentAngle;
-      
-      // Calcular velocidad y opacidad basadas en intensidad
-      const speed = 3.0 + (intensity * 5.0); // Rango: 3.0 a 8.0
-      const initialOpacity = 0.3 + (intensity * 0.7); // Rango: 0.3 a 1.0
-      
-      // Agregar nueva diagonal
-      diagonalEventsRef.current.push({
-        id: `diag-${now}-${Math.random()}`,
-        startTime: now,
-        baseAngle: currentAngle,
-        speed: speed,
-        initialOpacity: initialOpacity,
-        creationIntensity: intensity,
-        audioIndex: currentAudioIndex, // Guardar el índice de audio para limpiar cuando cambie
-        targetOpacity: initialOpacity, // Opacidad objetivo basada en audio
-        fadeStartTime: now, // Tiempo de inicio del fade actual
-        isFadingIn: true // Estado del fade
-      });
+    }
+    
+    // Filtrar por umbral de intensidad mínimo (más permisivo si hay energía de voz)
+    if (effectiveIntensity < MIN_INTENSITY_THRESHOLD && !hasSignificantVoice) {
+      // No generar nueva diagonal, pero la reactividad continua se encargará de desvanecer las existentes
+      return;
+    }
+    
+    // Filtrar por tiempo mínimo entre diagonales
+    if (now - lastDiagonalTimeRef.current < MIN_TIME_BETWEEN_DIAGONALS) {
+      return; // Ignorar si no ha pasado el tiempo mínimo
+    }
+    
+    // Actualizar el tiempo del último cuadrado generado
+    lastDiagonalTimeRef.current = now;
+    
+    // Obtener el ángulo actual de la última diagonal
+    let currentAngle = lastDiagonalAngleRef.current;
+    if (diagonalEventsRef.current.length > 0) {
+      const lastDiag = diagonalEventsRef.current[diagonalEventsRef.current.length - 1];
+      const elapsed = now - lastDiag.startTime;
+      const rotationSpeed = 360 / (BASE_DURATION / lastDiag.speed);
+      const rotation = (elapsed / 1000) * rotationSpeed;
+      currentAngle = (lastDiag.baseAngle + rotation) % 360;
+    }
+    
+    lastDiagonalAngleRef.current = currentAngle;
+    
+    // Calcular velocidad y opacidad basadas en intensidad
+    const speed = 3.0 + (intensity * 5.0); // Rango: 3.0 a 8.0
+    const initialOpacity = 0.3 + (intensity * 0.7); // Rango: 0.3 a 1.0
+    
+    // Agregar nueva diagonal
+    const newDiagonal = {
+      id: `diag-${now}-${Math.random()}`,
+      startTime: now,
+      baseAngle: currentAngle,
+      speed: speed,
+      initialOpacity: initialOpacity,
+      creationIntensity: intensity,
+      audioIndex: currentAudioIndex, // Guardar el índice de audio para limpiar cuando cambie
+      targetOpacity: initialOpacity, // Opacidad objetivo basada en audio
+      fadeStartTime: now, // Tiempo de inicio del fade actual
+      isFadingIn: true, // Estado del fade
+      currentOpacity: initialOpacity // Inicializar opacidad actual
     };
+    diagonalEventsRef.current.push(newDiagonal);
+    console.log('[DiagonalSynthesizer] Nueva diagonal creada:', {
+      id: newDiagonal.id,
+      intensity,
+      voiceEnergy,
+      initialOpacity,
+      audioIndex: currentAudioIndex,
+      totalDiagonals: diagonalEventsRef.current.length
+    });
+  }, [currentAudioIndex]);
 
-    // Función para envolver el callback - se llama cuando cambia currentAudioIndex o cuando se inicializa
-    const wrapCallback = () => {
-      if (!onVoiceCallbackRef?.current) {
-        return false; // Callback no disponible aún
-      }
+  // Escuchar eventos de voz para generar nuevas diagonales
+  useEffect(() => {
+    if (!onVoiceCallbackRef) return;
 
-      // Si ya está envuelto por nosotros, verificar que sea nuestro wrapper
+    // Usar intervalo continuo para envolver el callback - igual que BorderSquaresSynthesizer
+    // IMPORTANTE: El intervalo debe ejecutarse continuamente porque el callback puede ser recreado
+    const setupInterval = setInterval(() => {
+      if (!onVoiceCallbackRef.current) return;
+
+      // Si ya está envuelto, no hacer nada (el wrapper sigue funcionando)
       if (onVoiceCallbackRef.current.__diagonalSynthesizerWrapped) {
-        // Ya está envuelto, pero verificar que el handler esté actualizado
-        // El wrapper ya existe y debería funcionar, solo necesitamos asegurarnos de que handleVoiceEvent esté actualizado
-        return true;
+        return; // Continuar verificando por si Background.js recrea el callback
       }
+      
+      // Si no está envuelto, Background.js puede haber recreado el callback
+      // Necesitamos envolverlo de nuevo
+      console.log('[DiagonalSynthesizer] Callback no envuelto, envolviendo...', typeof onVoiceCallbackRef.current);
 
       // Guardar el callback original (puede ser el de Diagonales.js o uno nuevo)
       const originalCallback = onVoiceCallbackRef.current;
-      console.log('[DiagonalSynthesizer] Envolviendo callback, tipo:', typeof originalCallback);
       
-      // Crear wrapper que siempre use el callback actual del ref
+      // Crear wrapper que llame tanto al original como al sintetizador
       const wrapperCallback = (intensity = 0.5, voiceEnergy = 0) => {
-        // Obtener el callback actual del ref (puede haber cambiado)
-        // Pero primero llamar al original que guardamos
+        // Llamar al callback original primero (para que Diagonales.js procese las fijas si es necesario)
         if (typeof originalCallback === 'function') {
           try {
             originalCallback(intensity, voiceEnergy);
@@ -255,18 +267,12 @@ const DiagonalSynthesizer = ({
           }
         }
         
-        // También verificar si hay un callback nuevo en el ref (por si cambió)
-        const currentCallback = onVoiceCallbackRef?.current;
-        if (currentCallback && currentCallback !== wrapperCallback && typeof currentCallback === 'function' && !currentCallback.__diagonalSynthesizerWrapped) {
-          try {
-            currentCallback(intensity, voiceEnergy);
-          } catch (error) {
-            console.error('[DiagonalSynthesizer] Error en callback actual:', error);
-          }
+        // Llamar al handler del sintetizador (siempre, incluso si el callback original falla)
+        try {
+          handleVoiceEvent(intensity, voiceEnergy);
+        } catch (error) {
+          console.error('[DiagonalSynthesizer] Error en handleVoiceEvent:', error);
         }
-        
-        // Llamar al handler del sintetizador
-        handleVoiceEvent(intensity, voiceEnergy);
       };
 
       // Marcar como envuelto
@@ -274,20 +280,13 @@ const DiagonalSynthesizer = ({
 
       // Reemplazar el callback con nuestro wrapper
       onVoiceCallbackRef.current = wrapperCallback;
-      console.log('[DiagonalSynthesizer] Callback envuelto correctamente');
-      return true;
-    };
-
-    // Usar intervalo continuo para envolver el callback
-    // IMPORTANTE: El intervalo debe ejecutarse continuamente porque el callback puede ser recreado
-    const setupInterval = setInterval(() => {
-      wrapCallback(); // Intentar envolver (si ya está envuelto, retorna true y no hace nada)
+      console.log('[DiagonalSynthesizer] Callback envuelto. handleVoiceEvent disponible:', typeof handleVoiceEvent === 'function');
     }, 100); // Verificar cada 100ms continuamente
 
     return () => {
       clearInterval(setupInterval);
     };
-  }, [onVoiceCallbackRef, currentAudioIndex]); // Añadir currentAudioIndex para forzar reconexión
+  }, [onVoiceCallbackRef, currentAudioIndex, handleVoiceEvent]); // Añadir handleVoiceEvent a dependencias
 
   // Inicializar canvas
   useEffect(() => {
@@ -419,9 +418,45 @@ const DiagonalSynthesizer = ({
       const lineLength = diagonal * 3; // 300vh equivalente
       const lineWidth = Math.max(1, viewportWidth * 0.003 * 0.5); // Similar a CSS
 
-      // DEBUG: Log para verificar diagonales activas (solo ocasionalmente para no saturar)
-      if (diagonalEventsRef.current.length > 0 && Math.random() < 0.01) { // Solo 1% de las veces
-        console.log('[DiagonalSynthesizer] Render - diagonales activas:', diagonalEventsRef.current.length, 'audioAboveThreshold:', audioAboveThreshold, 'effectiveIntensity:', effectiveIntensity);
+      // DEBUG: Log solo cuando hay diagonales pero no se dibujan o cuando no hay diagonales pero debería haberlas
+      if (diagonalEventsRef.current.length > 0) {
+        const visibleCount = diagonalEventsRef.current.filter(diag => {
+          const age = now - diag.startTime;
+          const rotationSpeed = 360 / (BASE_DURATION / diag.speed);
+          const rotation = (age / 1000) * rotationSpeed;
+          const currentAngle = (diag.baseAngle + rotation) % 360;
+          let targetOpacity = diag.initialOpacity || diag.targetOpacity || 1;
+          if (diag.audioIndex === currentAudioIndex || diag.audioIndex === null) {
+            if (audioAboveThreshold) {
+              targetOpacity = diag.initialOpacity || 1;
+            } else {
+              targetOpacity = 0;
+            }
+          }
+          if (diag.targetOpacity === undefined) diag.targetOpacity = diag.initialOpacity || 1;
+          if (diag.fadeStartTime === undefined) diag.fadeStartTime = diag.startTime;
+          if (diag.isFadingIn === undefined) diag.isFadingIn = true;
+          if (diag.currentOpacity === undefined) diag.currentOpacity = diag.initialOpacity || 1;
+          const fadeDuration = diag.isFadingIn ? FADE_IN_DURATION : FADE_OUT_DURATION;
+          const fadeElapsed = now - diag.fadeStartTime;
+          const fadeProgress = Math.min(fadeElapsed / fadeDuration, 1);
+          let opacity;
+          if (diag.isFadingIn) {
+            const startOpacity = diag.currentOpacity;
+            opacity = startOpacity + (targetOpacity - startOpacity) * fadeProgress;
+          } else {
+            const startOpacity = diag.currentOpacity;
+            opacity = startOpacity * (1 - fadeProgress);
+          }
+          diag.targetOpacity = targetOpacity;
+          diag.currentOpacity = opacity;
+          return opacity > 0.01;
+        }).length;
+        if (visibleCount === 0 && audioAboveThreshold && Math.random() < 0.1) {
+          console.log('[DiagonalSynthesizer] Hay diagonales pero ninguna visible. Total:', diagonalEventsRef.current.length, 'audioAboveThreshold:', audioAboveThreshold);
+        }
+      } else if (audioAboveThreshold && Math.random() < 0.1) {
+        console.log('[DiagonalSynthesizer] No hay diagonales pero audioAboveThreshold es true. effectiveIntensity:', effectiveIntensity);
       }
 
       // Dibujar todas las diagonales activas
@@ -595,10 +630,11 @@ const DiagonalSynthesizer = ({
       className="diagonal-synthesizer"
       style={{
         position: 'absolute',
-        top: 0,
-        left: 0,
+        top: '50%',
+        left: '50%',
         width: '100%',
         height: '100%',
+        transform: 'translate(-50%, -50%)',
         pointerEvents: 'none',
         zIndex: 9 // Mismo z-index que las diagonales originales
       }}

@@ -107,7 +107,9 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
             // Actualizar progreso
         const loadedCount = Array.from(imageStatesRef.current.values())
           .filter(s => s.state === 'ready' || s.state === 'error').length;
-        const progress = Math.min(100, (loadedCount / imagesList.length) * 100);
+        const progress = imagesList.length > 0
+          ? Math.max(1, Math.min(100, (loadedCount / imagesList.length) * 100))
+          : 100;
         
         maxProgressReached = Math.max(maxProgressReached, progress);
         if (onProgress) {
@@ -128,7 +130,9 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
           // Si ya está cargada o no está pendiente, continuar
           const loadedCount = Array.from(imageStatesRef.current.values())
             .filter(s => s.state === 'ready' || s.state === 'error').length;
-          const progress = Math.min(100, (loadedCount / imagesList.length) * 100);
+          const progress = imagesList.length > 0
+            ? Math.max(1, Math.min(100, (loadedCount / imagesList.length) * 100))
+            : 100;
           maxProgressReached = Math.max(maxProgressReached, progress);
           if (onProgress) {
             onProgress(maxProgressReached);
@@ -195,7 +199,7 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
         isLastImageRef.current = false; // Resetear flag de última imagen
         
         // Detectar si es Nachitos de Nochevieja (usa flag del track)
-        const isCroquetas25 = selectedTrack?.isCroquetas25 === true;
+        const isMainCroqueta = selectedTrack?.isMainCroqueta === true;
         
         // Construir estructura: para Nachitos de Nochevieja todas las imágenes, para tracks normales por subcarpeta
         imagesList.forEach((img, index) => {
@@ -210,7 +214,7 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
           
           // Para tracks normales: organizar por subcarpeta
           // Para Nachitos de Nochevieja: todas las imágenes en un solo índice
-          if (isCroquetas25) {
+          if (isMainCroqueta) {
             // Nachitos de Nochevieja: todas las imágenes mezcladas
             if (!subfolderImageIndicesRef.current.has('__all__')) {
               subfolderImageIndicesRef.current.set('__all__', []);
@@ -234,7 +238,7 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
 
         // Para tracks normales, construir '__all__' respetando el orden de subcarpetas
         // El orden debe ser el mismo que en imagesList (que ya viene ordenado desde useTracks)
-        if (!isCroquetas25) {
+        if (!isMainCroqueta) {
           if (!subfolderImageIndicesRef.current.has('__all__')) {
             subfolderImageIndicesRef.current.set('__all__', []);
           }
@@ -259,12 +263,13 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
         }
         
         setAllImages(imagesList);
-        setPreloadProgress(0);
+        // Inicializar progreso en 1% para que el loader se muestre inmediatamente
+        setPreloadProgress(imagesList.length > 0 ? 1 : 100);
 
         // Calcular cuántas imágenes precargar inicialmente
         // Para tracks con múltiples subcarpetas, precargar de todas las subcarpetas
         let initialImages = [];
-        if (isCroquetas25) {
+        if (isMainCroqueta) {
           // Para Nachitos de Nochevieja: precargar las primeras imágenes de toda la lista
           const allIndices = subfolderImageIndicesRef.current.get('__all__') || 
             Array.from({ length: imagesList.length }, (_, i) => i);
@@ -326,7 +331,9 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
               
           const loadedCount = Array.from(imageStatesRef.current.values())
             .filter(s => s.state === 'ready' || s.state === 'error').length;
-          const progress = (loadedCount / imagesList.length) * 100;
+          const progress = imagesList.length > 0
+            ? Math.max(1, Math.min(100, (loadedCount / imagesList.length) * 100))
+            : 100;
           
           setPreloadProgress(progress);
               
@@ -343,7 +350,9 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
                 // Todas las iniciales cargadas
                 const finalLoadedCount = Array.from(imageStatesRef.current.values())
                   .filter(s => s.state === 'ready' || s.state === 'error').length;
-                const finalProgress = (finalLoadedCount / imagesList.length) * 100;
+                const finalProgress = imagesList.length > 0
+                  ? Math.max(1, Math.min(100, (finalLoadedCount / imagesList.length) * 100))
+                  : 100;
                 
                 setIsLoading(false);
                 setPreloadProgress(finalProgress);
@@ -400,7 +409,7 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
   // Para tracks normales retorna la subcarpeta del audio actual
   const getCurrentSubfolder = useCallback(() => {
     // Nachitos de Nochevieja: no filtrar por subcarpeta
-    if (selectedTrack?.isCroquetas25 === true) {
+    if (selectedTrack?.isMainCroqueta === true) {
       return null;
     }
     
@@ -445,7 +454,7 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
     if (allImages.length === 0) return;
     
     // Detectar si es Nachitos de Nochevieja
-    const isCroquetas25 = selectedTrack?.isCroquetas25 === true;
+    const isMainCroqueta = selectedTrack?.isMainCroqueta === true;
     
     // Solo procesar si realmente cambió el índice de audio
     if (lastAudioIndexRef.current === currentAudioIndex) {
@@ -455,11 +464,11 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
     console.log('[Gallery] Cambio de audio detectado:', {
       from: lastAudioIndexRef.current,
       to: currentAudioIndex,
-      isCroquetas25
+      isMainCroqueta
     });
     
     // Para Nachitos de Nochevieja, usar todas las imágenes sin filtrar por subcarpeta
-    if (isCroquetas25) {
+    if (isMainCroqueta) {
       const allIndices = subfolderImageIndicesRef.current.get('__all__') || 
         Array.from({ length: allImages.length }, (_, i) => i);
       
@@ -646,12 +655,12 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
     }
 
     // Detectar si es Nachitos de Nochevieja
-    const isCroquetas25 = selectedTrack?.isCroquetas25 === true;
+    const isMainCroqueta = selectedTrack?.isMainCroqueta === true;
     
     let imageIndices;
     let normalizedSubfolder;
     
-    if (isCroquetas25) {
+    if (isMainCroqueta) {
       // Nachitos de Nochevieja: usar todas las imágenes mezcladas
       imageIndices = subfolderImageIndicesRef.current.get('__all__') || 
         Array.from({ length: allImages.length }, (_, i) => i);
@@ -960,8 +969,8 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
       }
       
       // Guardar índice actualizado (ahora con ciclo circular)
-      subfolderCurrentIndexRef.current.set(normalizedSubfolder, subfolderIndex);
-      currentIndexRef.current = imageIndices[subfolderIndex] || imageIndices[0] || 0;
+        subfolderCurrentIndexRef.current.set(normalizedSubfolder, subfolderIndex);
+        currentIndexRef.current = imageIndices[subfolderIndex] || imageIndices[0] || 0;
       console.log('[Gallery] getNextImage - Guardado índice', subfolderIndex, 'para segmentKey:', normalizedSubfolder, 'próxima imagen será índice', subfolderIndex, 'de', imageIndices.length);
       
       // Retornar la imagen (el ciclo circular permite reutilizar imágenes)

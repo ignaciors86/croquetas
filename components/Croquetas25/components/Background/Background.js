@@ -3,7 +3,6 @@ import gsap from 'gsap';
 import { IMAGE_SIZES } from './variables';
 import './Background.scss';
 import Diagonales from './components/Diagonales/Diagonales';
-import CanvasRenderer from './components/CanvasRenderer/CanvasRenderer';
 import BorderSquaresSynthesizer from './components/BorderSquaresSynthesizer/BorderSquaresSynthesizer';
 import DiagonalSynthesizer from './components/DiagonalSynthesizer/DiagonalSynthesizer';
 import { useGallery } from '../Gallery/Gallery';
@@ -12,6 +11,11 @@ const MAINCLASS = 'background';
 
 const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitialized, onVoiceCallbackRef, selectedTrack, showOnlyDiagonales = false, currentAudioIndex = null, onAllComplete = null, pause = null, isPlaying = true }) => {
   const [squares, setSquares] = useState([]);
+  // Estado para forzar recálculo cuando cambian las dimensiones
+  const [viewportDimensions, setViewportDimensions] = useState(() => ({
+    width: typeof window !== 'undefined' ? window.innerWidth : 1920,
+    height: typeof window !== 'undefined' ? window.innerHeight : 1080
+  }));
   const squareRefs = useRef({});
   const animationTimelinesRef = useRef({});
   const lastProgressRef = useRef(0);
@@ -19,6 +23,13 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
   const recentImagePositionsRef = useRef([]); // Track de posiciones recientes para evitar solapamientos
   const { getNextImage, allImages, isLoading, preloadNextImages, isLastImageRef } = useGallery(selectedTrack, null, onAllComplete, currentAudioIndex, !showOnlyDiagonales);
   const MAX_SQUARES = 50;
+  
+  // Detectar si es Nachitos de Nochevieja (para no pausar animaciones)
+  const isMainCroqueta = selectedTrack && (
+    selectedTrack.name?.toLowerCase().includes('nachitos de nochevieja') ||
+    selectedTrack.name?.toLowerCase().includes('nachitos-de-nochevieja') ||
+    selectedTrack.id?.toLowerCase().includes('nachitos-de-nochevieja')
+  );
   
   // Pre-cargar imágenes próximas cuando cambian las imágenes disponibles
   useEffect(() => {
@@ -28,7 +39,43 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
   }, [isLoading, allImages.length, preloadNextImages]);
   
   const lastImageTimeRef = useRef(0);
-  const MIN_TIME_BETWEEN_IMAGES = 1000; // 3 segundos mínimo entre imágenes
+  
+  // Manejar resize y fullscreen changes para recalcular dimensiones
+  useEffect(() => {
+    const updateDimensions = () => {
+      setViewportDimensions({
+        width: window.innerWidth,
+        height: window.innerHeight
+      });
+    };
+
+    // Actualizar dimensiones inmediatamente
+    updateDimensions();
+
+    // Listeners para resize y cambios de orientación
+    window.addEventListener('resize', updateDimensions);
+    window.addEventListener('orientationchange', updateDimensions);
+
+    // Listeners para cambios de fullscreen
+    const handleFullscreenChange = () => {
+      // Pequeño delay para asegurar que las dimensiones se hayan actualizado
+      setTimeout(updateDimensions, 100);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+    document.addEventListener('MSFullscreenChange', handleFullscreenChange);
+
+    return () => {
+      window.removeEventListener('resize', updateDimensions);
+      window.removeEventListener('orientationchange', updateDimensions);
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
+    };
+  }, []);
   
   useEffect(() => {
     if (!onTriggerCallbackRef || showOnlyDiagonales) return;
@@ -45,6 +92,8 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
         }
         
         // Solo procesar cuadrados con imagen
+        // Para Nachitos: más sensible (menos tiempo entre imágenes)
+        const MIN_TIME_BETWEEN_IMAGES = isMainCroqueta ? 1000 : 2500; // 1 segundo para Nachitos, 2.5 para otras
         // Si es una imagen y no ha pasado el tiempo mínimo, ignorar
         if (now - lastImageTimeRef.current < MIN_TIME_BETWEEN_IMAGES) {
           return;
@@ -95,10 +144,10 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
         // En landscape: bottom 10%, width 60%, left 20% (zona 20%-80% x, 0%-15% y desde abajo)
         // En portrait: bottom 4%, width 90%, left 5% (zona 5%-95% x, 0%-20% y desde abajo)
         
-        // Detectar orientación
-        const isPortrait = window.innerHeight > window.innerWidth;
-        const viewportWidth = window.innerWidth;
-        const viewportHeight = window.innerHeight;
+        // Detectar orientación usando las dimensiones actualizadas
+        const isPortrait = viewportDimensions.height > viewportDimensions.width;
+        const viewportWidth = viewportDimensions.width;
+        const viewportHeight = viewportDimensions.height;
         
         // Calcular tamaño máximo de imagen según CSS
         // Desktop: max-width y max-height = 120dvh (120% del viewport height para landscape)
@@ -121,13 +170,15 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
         const marginYPercent = (maxImageHeight / 2) / viewportHeight * 100;
         
         // Área válida considerando márgenes (para que la imagen completa quede dentro)
-        // Expandir significativamente hacia los lados y arriba/abajo para usar todo el espacio disponible
-        // En landscape, expandir más para usar todo el espacio disponible
-        const sideExpansion = isPortrait ? 8 : 12; // En landscape, expandir 12% más hacia cada lado
-        const topExpansion = isPortrait ? 15 : 22; // En landscape, expandir 22% más hacia arriba
-        const bottomExpansion = isPortrait ? 0 : 3; // En landscape, expandir 3% más hacia abajo
-        const minX = Math.max(0, marginXPercent - sideExpansion); // Más espacio a los lados
-        const maxX = Math.min(100, 100 - marginXPercent + sideExpansion); // Más espacio a los lados
+        // Reducir desplazamiento horizontal (X) para limitar el rango de lanzamiento
+        const sideExpansion = isPortrait ? 8 : 10; // Reducido para limitar desplazamiento horizontal
+        const topExpansion = isPortrait ? 25 : 30; // Aumentado significativamente
+        const bottomExpansion = isPortrait ? 5 : 10; // Aumentado para centrar mejor en Y
+        // Limitar más el rango horizontal: reducir el área disponible en X
+        const xLimit = 30; // Límite adicional en porcentaje (30% desde cada lado = 40% del centro disponible)
+        const minX = Math.max(xLimit, marginXPercent - sideExpansion); // Limitar desplazamiento a los lados
+        const maxX = Math.min(100 - xLimit, 100 - marginXPercent + sideExpansion); // Limitar desplazamiento a los lados
+        // Centrar mejor en Y: más espacio arriba y abajo para que no se corte
         const minY = Math.max(0, marginYPercent - topExpansion); // Mucho más espacio arriba
         const maxY = Math.min(100, 100 - marginYPercent + bottomExpansion); // Más espacio abajo también
         
@@ -355,7 +406,7 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
     };
     
     createCallback();
-  }, [onTriggerCallbackRef, getNextImage, preloadNextImages]);
+  }, [onTriggerCallbackRef, getNextImage, preloadNextImages, viewportDimensions]);
 
   useEffect(() => {
     squares.forEach(square => {
@@ -369,8 +420,12 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
         const isTarget = true;
         
         // Duración para cuadros con imagen
-        const baseDuration = square.type === 'beat' ? 10 : 8;
-        const duration = baseDuration - (intensity * 2); // Factor de intensidad ajustado
+        // Para Nachitos: más rápido y sin parar
+        // Para otras colecciones: más lento (18/15 segundos)
+        const baseDuration = isMainCroqueta 
+          ? (square.type === 'beat' ? 5 : 4)  // Nachitos: mucho más rápido (5/4 segundos)
+          : (square.type === 'beat' ? 18 : 15); // Otras: más lento
+        const duration = baseDuration - (intensity * (isMainCroqueta ? 0.3 : 1.5)); // Factor de intensidad ajustado (menos variación para Nachitos)
         
         try {
           const timeline = gsap.timeline();
@@ -404,12 +459,7 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
           };
           
           // Todos los cuadrados son con imagen ahora
-            // Detectar si es Nachitos de Nochevieja
-            const isCroquetas25 = selectedTrack && (
-              selectedTrack.name?.toLowerCase().includes('nachitos de nochevieja') ||
-              selectedTrack.name?.toLowerCase().includes('nachitos-de-nochevieja') ||
-              selectedTrack.id?.toLowerCase().includes('nachitos-de-nochevieja')
-            );
+            // isMainCroqueta ya está definido arriba en el componente
             
             const zStart = -600;
             const zEnd = 400;
@@ -419,9 +469,9 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
             const zTotal = zEnd - zStart;
             const zProgressToScale1 = (zAtScale1 - zStart) / zTotal;
             
-            // Calcular posición final desde imagePosition (porcentajes)
-            const viewportWidth = window.innerWidth;
-            const viewportHeight = window.innerHeight;
+            // Calcular posición final desde imagePosition (porcentajes) usando dimensiones actualizadas
+            const viewportWidth = viewportDimensions.width;
+            const viewportHeight = viewportDimensions.height;
             let finalX = 0;
             let finalY = 0;
             
@@ -432,13 +482,20 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
               finalY = (yPercent / 100) * viewportHeight - viewportHeight / 2;
             }
             
-            // Inicializar posición en el centro absoluto (0, 0 en transform)
-            gsap.set(el, { x: 0, y: 0 });
+            // Inicializar posición en el centro absoluto (0, 0 en transform) y scale 0
+            // Asegurar que el transformOrigin esté en el centro para que el scale funcione correctamente
+            gsap.set(el, { 
+              x: 0, 
+              y: 0, 
+              scale: 0, 
+              opacity: 1,
+              transformOrigin: '50% 50%'
+            });
             
-            if (isCroquetas25) {
-              // Para Nachitos de Nochevieja: animación continua sin detención, directamente al fade out
-              const fadeStartProgress = 0.7; // Empezar fade out al 70% de la animación
-              
+            if (isMainCroqueta) {
+              // Para Nachitos de Nochevieja: animación continua sin detención, de largo hasta el final
+              // El fade out empieza antes del final del desplazamiento usando posicionamiento relativo
+              // Fase 1: Crecer y moverse hasta el final (100% del tiempo)
               timeline.fromTo(el, 
                 { 
                   scale: 0, 
@@ -448,23 +505,27 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
                   opacity: 1
                 },
                 {
-                  scale: scaleAt1,
-                  z: zEnd,
+                  scale: scaleAt1 * 1.5, // Llegar directamente al tamaño final de desaparición
+                  z: zEnd, // Continuar hacia adelante
                   x: finalX, // Mover a la posición final
                   y: finalY,
-                  opacity: 1,
-                  duration: duration,
-                  ease: 'power3.out', // Más suave al inicio, como si viniera de un largo viaje
-                  force3D: true,
-                  onUpdate: function() {
-                    const progress = this.progress();
-                    
-                    if (progress >= fadeStartProgress) {
-                      const fadeProgress = (progress - fadeStartProgress) / (1.0 - fadeStartProgress);
-                      const newOpacity = 1 - fadeProgress;
-                      gsap.set(el, { opacity: Math.max(0, newOpacity) });
-                    }
-                  },
+                  opacity: 1, // Mantener opacidad durante todo el movimiento
+                  duration: duration, // 100% del tiempo para crecer y moverse
+                  ease: 'linear', // Ease linear para movimiento constante
+                  force3D: true
+                }
+              );
+              
+              // Fase 2: Fade out que empieza ANTES del final del desplazamiento (usando posicionamiento relativo)
+              // "-=X" hace que empiece X segundos antes del final de la animación anterior
+              // Esto crea un solapamiento donde el fade out ocurre mientras aún se está moviendo
+              const fadeOutDuration = duration * 0.2; // 20% del tiempo para desaparecer
+              const fadeOutStart = `-=${fadeOutDuration}`; // Empezar 20% antes del final del desplazamiento
+              timeline.to(el, {
+                opacity: 0, // Desaparecer completamente
+                duration: fadeOutDuration,
+                ease: 'linear', // Ease linear para el fade out
+                force3D: true,
                   onComplete: async () => {
                     // Si es la última imagen, hacer fade out del volumen y luego volver al menú
                     if (square.isLastImage && onAllComplete && pause) {
@@ -495,13 +556,14 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
                       cleanupSquare();
                     }
                   }
-                }
-              );
+              }, fadeOutStart); // Posicionamiento relativo: empezar antes del final
             } else {
-              // Para otras colecciones: animación con dos fases (con detención)
-              const timeToScale1 = duration * 0.55; // Ajustado: un poco más lento que 0.5
-              const fadeOutDuration = duration * 0.45; // Ajustado para balancear
+              // Para otras colecciones: animación con dos fases (con detención y pausable)
+              const timeToScale1 = duration * 0.5; // 50% del tiempo para llegar a scale 1
+              const holdDuration = duration * 0.1; // 10% del tiempo para mantener (detención)
+              const fadeOutDuration = duration * 0.4; // 40% del tiempo para desaparecer
               
+              // Fase 1: Crecer desde el centro hasta la posición final
               timeline.fromTo(el, 
                 { 
                   scale: 0, 
@@ -522,14 +584,28 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
                 }
               );
               
+              // Fase 2: Mantener (detención) - solo para colecciones normales
+              timeline.to(el, {
+                scale: scaleAt1,
+                z: zAtScale1,
+                x: finalX,
+                y: finalY,
+                opacity: 1,
+                duration: holdDuration,
+                ease: 'none', // Sin animación, solo mantener
+                force3D: true
+              });
+              
+              // Fase 3: Agrandarse mientras desaparece (hacia adelante)
+              // Continuar aumentando el scale mientras se hace opaco
               timeline.to(el, {
                 opacity: 0,
-                scale: 0.95,
-                z: 100,
+                scale: scaleAt1 * 1.5, // Agrandarse más mientras desaparece (aumentado para que sea más visible)
+                z: zEnd, // Continuar hacia adelante
                 x: finalX, // Mantener posición durante fade out
                 y: finalY,
                 duration: fadeOutDuration,
-                ease: 'power2.in',
+                ease: 'power2.out', // Acelerar mientras desaparece
                 force3D: true,
                 onComplete: async () => {
                 // Si es la última imagen, hacer fade out del volumen y luego volver al menú
@@ -590,11 +666,17 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
         }
       }
     });
-  }, [squares]);
+  }, [squares, viewportDimensions]);
 
   // Pausar/reanudar animaciones cuando el audio se pausa/reanuda
+  // IMPORTANTE: Para Nachitos de Nochevieja, NO pausar las animaciones
   useEffect(() => {
-    // Cuando isPlaying cambia, pausar/reanudar animaciones GSAP
+    // Si es Nachitos, no pausar animaciones
+    if (isMainCroqueta) {
+      return;
+    }
+    
+    // Cuando isPlaying cambia, pausar/reanudar animaciones GSAP (solo para colecciones normales)
     if (!isPlaying) {
       // Pausar todas las animaciones
       Object.values(animationTimelinesRef.current).forEach(timeline => {
@@ -606,21 +688,7 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
         if (timeline) timeline.resume();
       });
     }
-  }, [isPlaying]);
-
-  useEffect(() => {
-    if (!isPlaying) {
-      // Pausar todas las animaciones
-      Object.values(animationTimelinesRef.current).forEach(timeline => {
-        if (timeline) timeline.pause();
-      });
-    } else {
-      // Reanudar todas las animaciones
-      Object.values(animationTimelinesRef.current).forEach(timeline => {
-        if (timeline) timeline.resume();
-      });
-    }
-  }, [isPlaying]);
+  }, [isPlaying, isMainCroqueta]);
 
   useEffect(() => {
     return () => {
@@ -652,8 +720,8 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
   useEffect(() => {
     const cleanupInterval = setInterval(() => {
       setSquares(prev => {
-        const viewportWidth = window.innerWidth;
-        const viewportHeight = window.innerHeight;
+        const viewportWidth = viewportDimensions.width;
+        const viewportHeight = viewportDimensions.height;
         const margin = 200;
         
         // Primero, limpiar squares fuera de pantalla o invisibles
@@ -723,7 +791,7 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
     }, 2000); // Verificar cada 2 segundos (unificado con limpieza)
     
     return () => clearInterval(cleanupInterval);
-  }, []);
+  }, [viewportDimensions]);
 
   return (
     <div className={MAINCLASS}>
@@ -757,31 +825,12 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
           key="synthesizer" // Forzar re-render cuando cambie el callback
         />
       )}
-        {/* Canvas para imágenes solamente */}
-      {!showOnlyDiagonales && (
-        <CanvasRenderer
-          squares={squares.filter(s => s.isTarget)} // Solo cuadrados con imagen
-          diagonales={[]} // Las diagonales se renderizan en DOM por Diagonales
-          analyserRef={analyserRef}
-          dataArrayRef={dataArrayRef}
-          selectedTrack={selectedTrack}
-          animationTimelinesRef={animationTimelinesRef}
-          diagonalRotationsRef={null} // Por ahora null, las diagonales se renderizan en DOM
-          squareRefs={squareRefs} // Pasar squareRefs para leer valores de GSAP
-        />
-      )}
+        {/* CanvasRenderer eliminado - todas las imágenes se renderizan en DOM */}
       {/* Blur overlay permanente sobre las diagonales - backdrop-filter difumina lo que está detrás */}
       <div className={`${MAINCLASS}__blurOverlay`} />
       {!showOnlyDiagonales && squares.map(square => {
         // Todos los cuadrados ahora son con imagen (el sintetizador maneja los de borde)
-        // Cuadrados con imagen
-        // Detectar si es GIF - los GIFs se renderizan en DOM porque canvas no soporta animación
-        const isGif = square.imageUrl && (
-          square.imageUrl.toLowerCase().endsWith('.gif')
-        );
-        
-        if (isGif) {
-          // GIFs: renderizar en DOM para que se animen
+        // Todas las imágenes se renderizan en DOM (no canvas) para evitar problemas con resize
         const style = {};
         const color1 = square.gradient?.color1 || '#00ffff';
         const color2 = square.gradient?.color2 || '#00ffff';
@@ -789,11 +838,12 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
         style['--square-color-1'] = color1;
         style['--square-color-2'] = color2;
         style['--square-gradient-angle'] = `${angle}deg`;
-          
-          // Detectar si es JPEG o GIF para aplicar sombra (el CSS ya tiene drop-shadow y box-shadow)
-          const imageUrlLower = square.imageUrl?.toLowerCase() || '';
-          const isJpeg = imageUrlLower.endsWith('.jpg') || imageUrlLower.endsWith('.jpeg');
-          const shouldHaveShadow = isJpeg || isGif;
+        
+        // Detectar si es JPEG o GIF para aplicar sombra (el CSS ya tiene drop-shadow y box-shadow)
+        const imageUrlLower = square.imageUrl?.toLowerCase() || '';
+        const isJpeg = imageUrlLower.endsWith('.jpg') || imageUrlLower.endsWith('.jpeg');
+        const isGif = imageUrlLower.endsWith('.gif');
+        const shouldHaveShadow = isJpeg || isGif;
         
         return (
           <div
@@ -811,27 +861,15 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
                 style={{
                   left: square.imagePosition?.x ?? '50%',
                   top: square.imagePosition?.y ?? '50%',
-                    transform: `translate(-50%, -50%) rotate(${square.imageRotation ?? 0}deg)`,
-                    // Asegurar que la sombra se aplique (el CSS ya tiene filter y box-shadow)
-                    filter: shouldHaveShadow ? 'drop-shadow(0 4px 12px rgba(0, 0, 0, 0.6)) drop-shadow(0 2px 6px rgba(0, 0, 0, 0.4))' : 'none',
-                    boxShadow: shouldHaveShadow ? '0 4px 20px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3)' : 'none'
+                  transform: `translate(-50%, -50%) rotate(${square.imageRotation ?? 0}deg)`,
+                  // Asegurar que la sombra se aplique (el CSS ya tiene filter y box-shadow)
+                  filter: shouldHaveShadow ? 'drop-shadow(0 4px 12px rgba(0, 0, 0, 0.6)) drop-shadow(0 2px 6px rgba(0, 0, 0, 0.4))' : 'none',
+                  boxShadow: shouldHaveShadow ? '0 4px 20px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3)' : 'none'
                 }}
               />
             )}
           </div>
         );
-        } else {
-          // No-GIFs: solo div invisible para GSAP (se renderizan en CanvasRenderer)
-          return (
-            <div
-              key={square.id}
-              ref={el => squareRefs.current[square.id] = el}
-              className={`${MAINCLASS}__square ${MAINCLASS}__square--target`}
-              data-square-id={square.id}
-              style={{ visibility: 'hidden', pointerEvents: 'none' }}
-            />
-          );
-        }
       })}
     </div>
   );

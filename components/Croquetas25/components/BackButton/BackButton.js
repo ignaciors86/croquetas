@@ -68,7 +68,7 @@ const BackButton = ({ onBack, audioRef }) => {
     <div className={MAINCLASS} ref={buttonRef}>
       <div ref={croquetaWrapperRef} className={`${MAINCLASS}__wrapper`}>
         <Croqueta
-          index={999}
+          index={0}
           text="Volver"
           onClick={handleBack}
           rotation={0}

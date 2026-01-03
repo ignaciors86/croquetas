@@ -157,21 +157,60 @@ const Seek = ({ squares, seekToImagePosition, selectedTrack, audioRef, currentAu
       if (targetSegment) {
         const targetAudioIndex = targetSegment.audioIndex;
         
-        // Usar seekToAudio para cambio con fade
-        if (setCurrentAudioIndex) {
-          console.log(`[Seek] Cambiando a segmento ${targetSegment.audioIndex} (audio ${targetAudioIndex}), tiempo: ${targetTime}`);
-          setCurrentAudioIndex(targetAudioIndex, targetTime);
-        } else {
-          // Fallback: solo hacer seek si no hay función
-          const audio = audioRef.current;
-          if (audio && audio.readyState >= 2) {
-            audio.currentTime = targetTime;
-          }
-        }
+        // Verificar si el audio está listo
+        const audio = audioRef.current;
+        const isAudioReady = audio && (audio.readyState >= 2 || (audio.readyState >= 1 && audio.duration > 0));
         
-        // Usar tiempos auxiliares para reposicionar imágenes ANTES de hacer seek del audio
-        if (seekToImagePosition && selectedTrack) {
-          seekToImagePosition(targetTotalTime, selectedTrack);
+        // Si el audio no está listo, mostrar loader y esperar brevemente
+        if (!isAudioReady && onSeekLoading) {
+          isSeekingRef.current = true;
+          onSeekLoading(true);
+          
+          // Esperar a que el audio esté listo (máximo 1 segundo)
+          const checkReady = setInterval(() => {
+            const currentAudio = audioRef.current;
+            if (currentAudio && (currentAudio.readyState >= 2 || (currentAudio.readyState >= 1 && currentAudio.duration > 0))) {
+              clearInterval(checkReady);
+              isSeekingRef.current = false;
+              onSeekLoading(false);
+              
+              // Hacer el seek
+              if (setCurrentAudioIndex) {
+                setCurrentAudioIndex(targetAudioIndex, targetTime);
+              }
+              
+              if (seekToImagePosition && selectedTrack) {
+                seekToImagePosition(targetTotalTime, selectedTrack);
+              }
+            }
+          }, 50);
+          
+          // Timeout de seguridad - hacer seek de todas formas después de 1 segundo
+          setTimeout(() => {
+            clearInterval(checkReady);
+            isSeekingRef.current = false;
+            if (onSeekLoading) {
+              onSeekLoading(false);
+            }
+            
+            // Hacer seek de todas formas
+            if (setCurrentAudioIndex) {
+              setCurrentAudioIndex(targetAudioIndex, targetTime);
+            }
+            
+            if (seekToImagePosition && selectedTrack) {
+              seekToImagePosition(targetTotalTime, selectedTrack);
+            }
+          }, 1000);
+        } else {
+          // Audio listo o no hay callback de loading, hacer seek directamente
+          if (setCurrentAudioIndex) {
+            setCurrentAudioIndex(targetAudioIndex, targetTime);
+          }
+          
+          if (seekToImagePosition && selectedTrack) {
+            seekToImagePosition(targetTotalTime, selectedTrack);
+          }
         }
       }
     } else if (audioDurations.length > 1) {
