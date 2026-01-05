@@ -139,7 +139,7 @@ const FullscreenButton = () => {
   }
 
   return (
-    <div className={MAINCLASS} ref={buttonRef}>
+    <div className={`${MAINCLASS} ${MAINCLASS}--portrait-hidden`} ref={buttonRef}>
       <div ref={croquetaWrapperRef} className={`${MAINCLASS}__wrapper`}>
         <Croqueta
           index={1}

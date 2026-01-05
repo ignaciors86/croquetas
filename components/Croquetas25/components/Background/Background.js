@@ -59,8 +59,10 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
 
     // Listeners para cambios de fullscreen
     const handleFullscreenChange = () => {
-      // Pequeño delay para asegurar que las dimensiones se hayan actualizado
-      setTimeout(updateDimensions, 100);
+      // Usar requestAnimationFrame para actualizar después del cambio
+      requestAnimationFrame(() => {
+        requestAnimationFrame(updateDimensions);
+      });
     };
 
     document.addEventListener('fullscreenchange', handleFullscreenChange);
@@ -453,10 +455,8 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
             // Limpiar referencias
             delete squareRefs.current[square.id];
             
-            // Eliminar del estado - usar setTimeout para evitar conflictos con el ciclo de renderizado
-            setTimeout(() => {
+            // Eliminar del estado directamente (React maneja el batching)
             setSquares(prev => prev.filter(s => s.id !== square.id));
-            }, 0);
           };
           
           // Todos los cuadrados son con imagen ahora
@@ -660,10 +660,8 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
             animationTimelinesRef.current[square.id].kill();
           delete animationTimelinesRef.current[square.id];
           }
-          // Eliminar del estado - usar setTimeout para evitar conflictos con el ciclo de renderizado
-          setTimeout(() => {
+          // Eliminar del estado directamente (React maneja el batching)
           setSquares(prev => prev.filter(s => s.id !== square.id));
-          }, 0);
         }
       }
     });
@@ -710,10 +708,8 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
       });
       squareRefs.current = {};
       
-      // Limpiar estado - usar setTimeout para evitar conflictos con el ciclo de renderizado
-      setTimeout(() => {
+      // Limpiar estado directamente (React maneja el batching)
       setSquares([]);
-      }, 0);
     };
   }, [selectedTrack]);
 
@@ -823,6 +819,7 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
           onTriggerCallbackRef={onTriggerCallbackRef}
           onVoiceCallbackRef={onVoiceCallbackRef}
           currentAudioIndex={currentAudioIndex}
+          isMainCroqueta={isMainCroqueta}
           key="synthesizer" // Forzar re-render cuando cambie el callback
         />
       )}

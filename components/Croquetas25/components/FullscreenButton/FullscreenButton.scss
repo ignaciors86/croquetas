@@ -4,6 +4,13 @@
   right: 0;
   z-index: 5000;
   pointer-events: auto;
+  
+  // Ocultar en pantallas portrait
+  &--portrait-hidden {
+    @media (orientation: portrait) {
+      display: none;
+    }
+  }
 }
 
 .fullscreenButton__wrapper {

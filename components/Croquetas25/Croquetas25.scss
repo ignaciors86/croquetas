@@ -51,6 +51,27 @@
 
 .croquetas25__loading-layer {
   z-index: 4000;
+  transition: opacity 0.4s ease-out;
+  
+  &.fade-out {
+    opacity: 0;
+    pointer-events: none;
+  }
+}
+
+// Fade in para elementos de reproducción
+.croquetas25__playback-elements {
+  opacity: 0;
+  animation: fadeInPlayback 0.4s ease-out forwards;
+}
+
+@keyframes fadeInPlayback {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes fadeIn {
@@ -143,5 +164,12 @@
   letter-spacing: 0.2em;
   text-align: center;
   font-family: 'VCR', monospace;
+}
+
+// Personalización para la colección principal (Nachitos de Nochevieja)
+// Los cuadrados con borde se hacen redondos con border-radius: 50vw
+.croquetas25-collection-nachitos-de-nochevieja {
+  // Los cuadrados se dibujan como círculos en el canvas, no necesitamos CSS aquí
+  // pero mantenemos el className para posibles personalizaciones futuras
 }
 

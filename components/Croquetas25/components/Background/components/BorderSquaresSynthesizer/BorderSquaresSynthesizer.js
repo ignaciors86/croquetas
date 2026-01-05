@@ -17,7 +17,8 @@ const BorderSquaresSynthesizer = ({
   dataArrayRef,
   onTriggerCallbackRef,
   onVoiceCallbackRef,
-  currentAudioIndex = null // Para detectar cambios de tramo
+  currentAudioIndex = null, // Para detectar cambios de tramo
+  isMainCroqueta = false // Para hacer los cuadrados redondos en la colección principal
 }) => {
   const canvasRef = useRef(null);
   const animationFrameRef = useRef(null);
@@ -27,13 +28,18 @@ const BorderSquaresSynthesizer = ({
   const lastVoiceTimeRef = useRef(0); // Tiempo del último cuadrado generado (voz)
   const currentAudioIntensityRef = useRef(0); // Intensidad actual del audio para reactividad continua
   const lastAudioIndexRef = useRef(null); // Para detectar cambios de tramo
+  // Color base de las croquetas: #00ffff (cyan) = HSL(180, 100%, 50%)
+  const BASE_CYAN_HUE = 180;
+  const BASE_CYAN_SATURATION = 100;
+  const BASE_CYAN_LIGHTNESS = 50;
+  
   const colorStateRef = useRef({
-    hue: 180,
-    saturation: 70,
-    lightness: 60,
-    targetHue: 180,
-    targetSaturation: 70,
-    targetLightness: 60
+    baseHue: BASE_CYAN_HUE, // Color base que cambia según la música
+    baseSaturation: BASE_CYAN_SATURATION,
+    baseLightness: BASE_CYAN_LIGHTNESS,
+    targetBaseHue: BASE_CYAN_HUE,
+    targetBaseSaturation: BASE_CYAN_SATURATION,
+    targetBaseLightness: BASE_CYAN_LIGHTNESS
   });
 
   // Configuración de ondas
@@ -260,14 +266,15 @@ const BorderSquaresSynthesizer = ({
     };
   }, [onTriggerCallbackRef, onVoiceCallbackRef, currentAudioIndex]); // Añadir currentAudioIndex para forzar reconexión cuando cambia el tramo
 
-  // Calcular color basado en música
-  const calculateColorFromMusic = useCallback(() => {
+  // Calcular color base basado en música (intensidad de las partes más intensas)
+  // Este color base se usa para generar la escala de azules
+  const calculateBaseColorFromMusic = useCallback(() => {
     if (!dataArrayRef?.current || !analyserRef?.current) {
-      const timeBasedHue = (Date.now() / 200) % 360;
+      // Sin audio, usar el color base de las croquetas
       return {
-        hue: Math.round(timeBasedHue),
-        saturation: 70,
-        lightness: 60
+        baseHue: BASE_CYAN_HUE,
+        baseSaturation: BASE_CYAN_SATURATION,
+        baseLightness: BASE_CYAN_LIGHTNESS
       };
     }
 
@@ -279,6 +286,7 @@ const BorderSquaresSynthesizer = ({
 
       // Calcular métricas de audio
       let sum = 0;
+      let maxValue = 0;
       let bassSum = 0;
       let trebleSum = 0;
       const bassRange = Math.floor(dataArray.length * 0.1);
@@ -287,6 +295,7 @@ const BorderSquaresSynthesizer = ({
       for (let i = 0; i < dataArray.length; i++) {
         const normalized = dataArray[i] / 255;
         sum += normalized;
+        maxValue = Math.max(maxValue, normalized);
         if (i < bassRange) bassSum += normalized;
         if (i > trebleRange) trebleSum += normalized;
       }
@@ -294,36 +303,56 @@ const BorderSquaresSynthesizer = ({
       const average = sum / dataArray.length;
       const bassEnergy = bassRange > 0 ? bassSum / bassRange : 0;
       const trebleEnergy = (dataArray.length - trebleRange) > 0 ? trebleSum / (dataArray.length - trebleRange) : 0;
-
-      // Calcular spectral centroid
-      let weightedSum = 0;
-      let magnitudeSum = 0;
-      for (let i = 0; i < dataArray.length; i++) {
-        const magnitude = dataArray[i] / 255;
-        weightedSum += i * magnitude;
-        magnitudeSum += magnitude;
-      }
-      const spectralCentroid = magnitudeSum > 0 ? weightedSum / magnitudeSum / dataArray.length : 0;
-
-      // Calcular color
-      const hue = (spectralCentroid * 360) % 360;
-      const saturation = Math.min(100, Math.max(50, 50 + (bassEnergy + trebleEnergy) * 50));
-      const lightness = Math.min(90, Math.max(40, 40 + average * 30));
+      
+      // Usar la intensidad máxima y promedio para determinar el color base
+      // Más intensidad = variar más el color base dentro de la gama de azules
+      const intensity = Math.max(maxValue, average);
+      
+      // Variar el hue alrededor del cyan (180) en un rango de ±30 grados (azules)
+      // Más intensidad = más variación
+      const hueVariation = (intensity - 0.5) * 60; // Rango: -30 a +30 grados
+      const baseHue = BASE_CYAN_HUE + hueVariation;
+      
+      // Mantener saturación alta pero variarla ligeramente según la música
+      const baseSaturation = Math.min(100, Math.max(80, BASE_CYAN_SATURATION - (bassEnergy * 20)));
+      
+      // Variar lightness según la intensidad
+      const baseLightness = Math.min(70, Math.max(40, BASE_CYAN_LIGHTNESS + (intensity * 20) - 10));
 
       return {
-        hue: Math.round(hue),
-        saturation: Math.round(saturation),
-        lightness: Math.round(lightness)
+        baseHue: Math.round(baseHue),
+        baseSaturation: Math.round(baseSaturation),
+        baseLightness: Math.round(baseLightness)
       };
     } catch (error) {
-      const timeBasedHue = (Date.now() / 200) % 360;
+      // En caso de error, usar el color base de las croquetas
       return {
-        hue: Math.round(timeBasedHue),
-        saturation: 70,
-        lightness: 60
+        baseHue: BASE_CYAN_HUE,
+        baseSaturation: BASE_CYAN_SATURATION,
+        baseLightness: BASE_CYAN_LIGHTNESS
       };
     }
   }, [analyserRef, dataArrayRef]);
+  
+  // Generar un color de la escala de azules para una onda específica
+  // Cada onda tiene un índice único que determina su variación en la escala
+  const getColorFromScale = useCallback((baseHue, baseSaturation, baseLightness, waveIndex) => {
+    // Crear variaciones sutiles en la escala de azules
+    // Usar el índice de la onda para generar variaciones consistentes
+    const hueVariation = (waveIndex % 7) * 5 - 15; // Variación de -15 a +15 grados
+    const saturationVariation = (waveIndex % 5) * 3 - 6; // Variación de -6 a +6%
+    const lightnessVariation = (waveIndex % 9) * 4 - 16; // Variación de -16 a +16%
+    
+    const hue = ((baseHue + hueVariation) % 360 + 360) % 360;
+    const saturation = Math.min(100, Math.max(70, baseSaturation + saturationVariation));
+    const lightness = Math.min(80, Math.max(30, baseLightness + lightnessVariation));
+    
+    return {
+      hue: Math.round(hue),
+      saturation: Math.round(saturation),
+      lightness: Math.round(lightness)
+    };
+  }, []);
 
   // Inicializar canvas
   useEffect(() => {
@@ -341,19 +370,45 @@ const BorderSquaresSynthesizer = ({
 
     const resizeCanvas = () => {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      // Usar window.innerWidth/innerHeight como fallback si getBoundingClientRect falla
       const rect = canvas.getBoundingClientRect();
-      canvas.width = rect.width * dpr;
-      canvas.height = rect.height * dpr;
+      const width = rect.width || window.innerWidth;
+      const height = rect.height || window.innerHeight;
+      
+      canvas.width = width * dpr;
+      canvas.height = height * dpr;
       ctx.scale(dpr, dpr);
-      canvas.style.width = `${rect.width}px`;
-      canvas.style.height = `${rect.height}px`;
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
     };
 
     resizeCanvas();
+    
+    // Escuchar múltiples eventos de resize
     window.addEventListener('resize', resizeCanvas);
+    window.addEventListener('orientationchange', resizeCanvas);
+    document.addEventListener('fullscreenchange', resizeCanvas);
+    document.addEventListener('webkitfullscreenchange', resizeCanvas);
+    document.addEventListener('mozfullscreenchange', resizeCanvas);
+    document.addEventListener('MSFullscreenChange', resizeCanvas);
+    
+    // Escuchar el evento personalizado de resize de Croquetas25
+    const handleCroquetasResize = () => {
+      // Usar requestAnimationFrame para asegurar que el DOM se haya actualizado
+      requestAnimationFrame(() => {
+        resizeCanvas();
+      });
+    };
+    window.addEventListener('croquetas-resize', handleCroquetasResize);
 
     return () => {
       window.removeEventListener('resize', resizeCanvas);
+      window.removeEventListener('orientationchange', resizeCanvas);
+      document.removeEventListener('fullscreenchange', resizeCanvas);
+      document.removeEventListener('webkitfullscreenchange', resizeCanvas);
+      document.removeEventListener('mozfullscreenchange', resizeCanvas);
+      document.removeEventListener('MSFullscreenChange', resizeCanvas);
+      window.removeEventListener('croquetas-resize', handleCroquetasResize);
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }
@@ -380,52 +435,54 @@ const BorderSquaresSynthesizer = ({
       // Asegurar resolución correcta
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       const rect = canvas.getBoundingClientRect();
-      if (canvas.width !== rect.width * dpr || canvas.height !== rect.height * dpr) {
-        canvas.width = rect.width * dpr;
-        canvas.height = rect.height * dpr;
+      // Usar window.innerWidth/innerHeight como fallback si getBoundingClientRect falla o devuelve 0
+      const canvasWidth = rect.width || window.innerWidth;
+      const canvasHeight = rect.height || window.innerHeight;
+      
+      if (canvas.width !== canvasWidth * dpr || canvas.height !== canvasHeight * dpr) {
+        canvas.width = canvasWidth * dpr;
+        canvas.height = canvasHeight * dpr;
         ctx.scale(dpr, dpr);
       }
 
       // Limpiar canvas
-      ctx.clearRect(0, 0, rect.width, rect.height);
+      ctx.clearRect(0, 0, canvasWidth, canvasHeight);
 
       const now = Date.now();
-      const viewportWidth = rect.width;
-      const viewportHeight = rect.height;
+      const viewportWidth = canvasWidth;
+      const viewportHeight = canvasHeight;
       const centerX = viewportWidth / 2;
       const centerY = viewportHeight / 2;
 
-      // Actualizar color objetivo cada 100ms
+      // Actualizar color base objetivo cada 100ms según la música
       if (currentTime % 100 < 16.67) {
-        const newColor = calculateColorFromMusic();
-        colorStateRef.current.targetHue = newColor.hue;
-        colorStateRef.current.targetSaturation = newColor.saturation;
-        colorStateRef.current.targetLightness = newColor.lightness;
+        const newBaseColor = calculateBaseColorFromMusic();
+        colorStateRef.current.targetBaseHue = newBaseColor.baseHue;
+        colorStateRef.current.targetBaseSaturation = newBaseColor.baseSaturation;
+        colorStateRef.current.targetBaseLightness = newBaseColor.baseLightness;
       }
 
-      // Interpolar color suavemente
+      // Interpolar color base suavemente
       const colorState = colorStateRef.current;
       const interpolationSpeed = 0.03;
       
-      // Interpolar hue (manejar wrap-around)
-      let hueDiff = Math.abs(colorState.targetHue - colorState.hue);
+      // Interpolar hue base (manejar wrap-around)
+      let hueDiff = Math.abs(colorState.targetBaseHue - colorState.baseHue);
       hueDiff = Math.min(hueDiff, 360 - hueDiff);
       
       if (hueDiff < 180) {
-        colorState.hue += (colorState.targetHue - colorState.hue) * interpolationSpeed;
+        colorState.baseHue += (colorState.targetBaseHue - colorState.baseHue) * interpolationSpeed;
       } else {
-        if (colorState.targetHue > colorState.hue) {
-          colorState.hue -= (360 - (colorState.targetHue - colorState.hue)) * interpolationSpeed;
+        if (colorState.targetBaseHue > colorState.baseHue) {
+          colorState.baseHue -= (360 - (colorState.targetBaseHue - colorState.baseHue)) * interpolationSpeed;
         } else {
-          colorState.hue += (360 - (colorState.hue - colorState.targetHue)) * interpolationSpeed;
+          colorState.baseHue += (360 - (colorState.baseHue - colorState.targetBaseHue)) * interpolationSpeed;
         }
       }
-      colorState.hue = ((colorState.hue % 360) + 360) % 360;
+      colorState.baseHue = ((colorState.baseHue % 360) + 360) % 360;
       
-      colorState.saturation += (colorState.targetSaturation - colorState.saturation) * interpolationSpeed;
-      colorState.lightness += (colorState.targetLightness - colorState.lightness) * interpolationSpeed;
-
-      const color = `hsl(${Math.round(colorState.hue)}, ${Math.round(colorState.saturation)}%, ${Math.round(colorState.lightness)}%)`;
+      colorState.baseSaturation += (colorState.targetBaseSaturation - colorState.baseSaturation) * interpolationSpeed;
+      colorState.baseLightness += (colorState.targetBaseLightness - colorState.baseLightness) * interpolationSpeed;
 
       // Calcular si el audio actual está por encima del umbral
       const audioAboveThreshold = currentAudioIntensityRef.current >= MIN_INTENSITY_THRESHOLD;
@@ -441,7 +498,7 @@ const BorderSquaresSynthesizer = ({
       // Actualizar waveEventsRef para mantener solo ondas activas
       waveEventsRef.current = activeWaves;
 
-      activeWaves.forEach(wave => {
+      activeWaves.forEach((wave, waveIndex) => {
         const elapsed = now - wave.startTime;
         // Calcular duración basada en intensidad (igual que el código original)
         // Más intensidad = menos duración (más rápido)
@@ -522,15 +579,35 @@ const BorderSquaresSynthesizer = ({
           sizeBasedOpacity = opacity * (1 - Math.min(1, fadeProgress));
         }
 
-        // Dibujar cuadrado
+        // Generar color único para esta onda basado en la escala de azules
+        const waveColor = getColorFromScale(
+          colorState.baseHue,
+          colorState.baseSaturation,
+          colorState.baseLightness,
+          waveIndex
+        );
+        const waveColorString = `hsl(${waveColor.hue}, ${waveColor.saturation}%, ${waveColor.lightness}%)`;
+        
+        // Dibujar cuadrado o círculo según la colección
         ctx.save();
         ctx.globalAlpha = sizeBasedOpacity;
         ctx.translate(centerX, centerY);
-        ctx.strokeStyle = color;
+        ctx.strokeStyle = waveColorString;
         ctx.lineWidth = 1;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
-        ctx.strokeRect(-finalWidth / 2, -finalHeight / 2, finalWidth, finalHeight);
+        
+        if (isMainCroqueta) {
+          // Para la colección principal, dibujar círculo
+          const radius = Math.max(finalWidth, finalHeight) / 2;
+          ctx.beginPath();
+          ctx.arc(0, 0, radius, 0, Math.PI * 2);
+          ctx.stroke();
+        } else {
+          // Para otras colecciones, dibujar cuadrado
+          ctx.strokeRect(-finalWidth / 2, -finalHeight / 2, finalWidth, finalHeight);
+        }
+        
         ctx.restore();
       });
 
@@ -544,7 +621,7 @@ const BorderSquaresSynthesizer = ({
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [calculateColorFromMusic]);
+  }, [calculateBaseColorFromMusic, getColorFromScale]);
 
   return (
     <canvas

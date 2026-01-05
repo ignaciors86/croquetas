@@ -43,21 +43,14 @@ const BackButton = ({ onBack, audioRef }) => {
   const handleBack = async () => {
     if (!buttonRef.current) return;
     
-    const exitProps = { scale: 0, opacity: 0, duration: 1.5, ease: 'power2.in' };
+    // Ocultar botón con animación suave (inverso de entrada)
+    const exitProps = { scale: 0, opacity: 0, duration: 0.6, ease: 'power2.in' };
     const exitTimeline = gsap.timeline();
     exitTimeline.to(buttonRef.current, exitProps);
     
-    // Pausar audio si está disponible y está reproduciéndose
-    if (audioRef?.current && !audioRef.current.paused) {
-      try {
-        audioRef.current.pause();
-      } catch (e) {
-        console.warn('[BackButton] Error pausando audio:', e);
-      }
-    }
-    
     await exitTimeline;
     
+    // onBack ya maneja el fade de volumen y las animaciones de salida
     if (onBack) {
       onBack();
     }

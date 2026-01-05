@@ -963,6 +963,29 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
       
       console.log('[Gallery] getNextImage - Avanzando índice de', currentImageIndex, 'a', subfolderIndex, 'de', imageIndices.length, 'para segmentKey:', normalizedSubfolder);
       
+      // Detectar si se completó un ciclo completo (volvimos al índice 0)
+      if (subfolderIndex === 0 && imageIndices.length > 0) {
+        subfolderCompletedCycle = true;
+        console.log('[Gallery] Ciclo completo de imágenes completado para segmentKey:', normalizedSubfolder);
+        
+        // Marcar en window para que handleEnded pueda verificar
+        if (typeof window !== 'undefined') {
+          if (!window.__imageCycleCompleted) {
+            window.__imageCycleCompleted = {};
+          }
+          window.__imageCycleCompleted[currentAudioIndex] = true;
+        }
+        
+        // Disparar evento para notificar que se completó el ciclo
+        window.dispatchEvent(new CustomEvent('imageCycleCompleted', {
+          detail: {
+            segmentKey: normalizedSubfolder,
+            audioIndex: currentAudioIndex,
+            totalImages: imageIndices.length
+          }
+        }));
+      }
+      
       // Ya aplicamos el ciclo circular arriba con %, así que esto no debería ser necesario
       // Pero lo dejamos como seguridad
       if (subfolderIndex >= imageIndices.length) {

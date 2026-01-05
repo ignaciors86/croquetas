@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { gsap } from 'gsap';
 import './Croquetas25.scss';
 import { AudioProvider, useAudio } from './context/AudioContext';
 import { useTracks } from './hooks/useTracks';
@@ -64,9 +65,33 @@ const Croquetas25 = () => {
   };
 
   const handleExit = () => {
-            setSelectedTrack(null);
-    setIsPlaying(false);
-    window.history.replaceState({}, '', '/');
+    // Ocultar menú primero (si está visible)
+    const introContainer = document.getElementById('intro-container');
+    if (introContainer) {
+      gsap.to(introContainer, {
+        opacity: 0,
+        duration: 0.3,
+        ease: 'power2.in',
+        onComplete: () => {
+          setSelectedTrack(null);
+          setIsPlaying(false);
+          window.history.replaceState({}, '', '/');
+          // Mostrar menú con fade in
+          requestAnimationFrame(() => {
+            if (introContainer) {
+              gsap.fromTo(introContainer, 
+                { opacity: 0 },
+                { opacity: 1, duration: 0.6, ease: 'power2.out', delay: 0.1 }
+              );
+            }
+          });
+        }
+      });
+    } else {
+      setSelectedTrack(null);
+      setIsPlaying(false);
+      window.history.replaceState({}, '', '/');
+    }
   };
   
   return (
@@ -94,6 +119,7 @@ const Croquetas25 = () => {
 
       {/* ESTADO 2: Mostrar croquetas */}
       {!selectedTrack && !tracksLoading && (
+        <div className="croquetas25__intro-container" id="intro-container">
         <Intro 
           tracks={tracks} 
           onTrackSelect={handleTrackSelect}
@@ -103,6 +129,7 @@ const Croquetas25 = () => {
           isVisible={true}
           keepBlurVisible={false}
         />
+        </div>
       )}
 
       {/* ESTADO 3: Reproduciendo colección */}
@@ -152,6 +179,9 @@ const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
   const [loadingFadedOut, setLoadingFadedOut] = useState(false);
   const [autoPlayAttempted, setAutoPlayAttempted] = useState(false);
   const [seekLoading, setSeekLoading] = useState(false);
+  const [elementsVisible, setElementsVisible] = useState(false); // Controla si los elementos de reproducción son visibles
+  const imageCycleCompletedRef = React.useRef(false); // Flag para rastrear si el ciclo de imágenes se completó
+  const shouldExitRef = React.useRef(false); // Flag para controlar salida después de último tramo
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [currentSegmentTime, setCurrentSegmentTime] = useState(0); // Tiempo relativo al tramo actual
@@ -160,6 +190,10 @@ const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
   const [guion, setGuion] = useState(null);
   const onTriggerCallbackRef = React.useRef(null);
   const onVoiceCallbackRef = React.useRef(null);
+  
+  // Refs para elementos a animar en entrada/salida
+  const playbackElementsRef = React.useRef(null);
+  const backgroundContainerRef = React.useRef(null);
 
   const combinedProgress = Math.round((imagesProgress + loadingProgress) / 2);
   const audioReady = isLoaded && loadingProgress >= 50;
@@ -167,8 +201,9 @@ const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
   // o si están cargando pero el progreso es bajo
   const imagesReady = !imagesLoading && imagesProgress >= 10;
   const everythingReady = audioReady && imagesReady;
-  // Mostrar loading si no está todo listo O si está en proceso de carga (incluso si imagesProgress es 0)
-  const showLoading = (!loadingFadedOut && (!audioReady || !imagesReady || imagesLoading)) || seekLoading;
+  // Mostrar loading hasta que los elementos de reproducción sean visibles (con fade)
+  // El loader se oculta cuando isPlaying es true Y elementsVisible es true
+  const showLoading = (!elementsVisible || !isPlaying || seekLoading) && (!loadingFadedOut || !elementsVisible);
 
   // Log de depuración eliminado - innecesario en producción
 
@@ -199,42 +234,74 @@ const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
       playRef.current().then(() => {
         console.log('[CroquetasContent] Play iniciado correctamente');
         setIsPlaying(true);
+        // Mostrar elementos de reproducción con animación suave
+        setElementsVisible(true);
+        
+        // Animar entrada de elementos suavemente (inverso de salida)
+        requestAnimationFrame(() => {
+          const enterTimeline = gsap.timeline();
+          
+          // Mostrar canvas de cuadrados/círculos con borde
+          const borderSquaresCanvas = document.querySelector('.border-squares-synthesizer');
+          if (borderSquaresCanvas) {
+            gsap.set(borderSquaresCanvas, { opacity: 0 });
+            enterTimeline.to(borderSquaresCanvas, {
+              opacity: 1,
+        duration: 0.6,
+              ease: 'power2.out'
+      }, 0);
+    }
+    
+          // Mostrar canvas de diagonales dinámicas
+          const diagonalCanvas = document.querySelector('.diagonal-synthesizer');
+          if (diagonalCanvas) {
+            gsap.set(diagonalCanvas, { opacity: 0 });
+            enterTimeline.to(diagonalCanvas, {
+              opacity: 1,
+        duration: 0.6,
+              ease: 'power2.out'
+            }, 0.1);
+          }
+          
+          // Mostrar elementos de reproducción
+          if (playbackElementsRef.current) {
+            gsap.set(playbackElementsRef.current, { opacity: 0 });
+            enterTimeline.to(playbackElementsRef.current, {
+            opacity: 1, 
+              duration: 0.5,
+            ease: 'power2.out' 
+            }, 0.2);
+          }
+        });
       }).catch((err) => {
         console.log('[CroquetasContent] Error en play, reintentando...', err);
-        // Si falla, reintentar una vez más después de un breve delay
-        setTimeout(() => {
-          playRef.current().then(() => {
-            console.log('[CroquetasContent] Play iniciado en reintento');
-            setIsPlaying(true);
-          }).catch((err2) => {
-            console.log('[CroquetasContent] Error en reintento de play', err2);
-            playAttemptedRef.current = false; // Permitir reintento si falla completamente
-          });
-              }, 300);
+        // Si falla, el efecto de reintento se encargará
+        playAttemptedRef.current = false;
       });
     }
   }, [everythingReady, autoPlayAttempted, isPlaying]);
-
-  // Timeout de seguridad: solo ocultar loading después de 15 segundos, NO forzar play
-  // El play solo debe ocurrir cuando el usuario hace clic
+  
+  // Reintentar play si falló (usando estado en lugar de setTimeout)
+  const [playRetryCount, setPlayRetryCount] = React.useState(0);
   React.useEffect(() => {
-    const safetyTimer = setTimeout(() => {
-      console.log('[CroquetasContent] Timeout de seguridad: ocultando loading', {
-  loadingFadedOut,
-        isPlaying,
-        autoPlayAttempted,
-        audioReady,
-        imagesReady,
-      imagesProgress,
-        loadingProgress
-      });
-      if (!loadingFadedOut) {
-              setLoadingFadedOut(true);
-      }
-      // NO forzar play aquí - solo ocultar el loading
-    }, 15000);
-    return () => clearTimeout(safetyTimer);
-  }, [loadingFadedOut, isPlaying, autoPlayAttempted, audioReady, imagesReady, imagesProgress, loadingProgress]);
+    if (!isPlaying && autoPlayAttempted && everythingReady && playRetryCount < 1 && !playAttemptedRef.current) {
+      // Solo reintentar una vez si falló
+      playAttemptedRef.current = true;
+      const retryId = setTimeout(() => {
+        if (!isPlaying && everythingReady) {
+          playRef.current().then(() => {
+            setIsPlaying(true);
+            setElementsVisible(true);
+            setPlayRetryCount(0);
+          }).catch(() => {
+            setPlayRetryCount(prev => prev + 1);
+            playAttemptedRef.current = false;
+          });
+        }
+      }, 500);
+      return () => clearTimeout(retryId);
+    }
+  }, [isPlaying, autoPlayAttempted, everythingReady, playRetryCount]);
 
   // Determinar el segmento activo basado en currentIndex
   React.useEffect(() => {
@@ -462,7 +529,7 @@ const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
         play().then(() => {
           setIsPlaying(true);
         }).catch(err => console.error('[CroquetasContent] Error reanudando:', err));
-      } else {
+    } else {
         // Estaba pausado, iniciar reproducción
         play().then(() => {
           setIsPlaying(true);
@@ -470,6 +537,128 @@ const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
       }
     }
   }, [isPlaying, pauseAudio, play, setIsPlaying]);
+  
+  // Función para salir con animaciones suaves
+  const handleExitWithAnimation = React.useCallback(async () => {
+    // 1. Fade del volumen a 0
+    await pauseAudio();
+    
+    // 2. Ocultar elementos suavemente (Prompt, Imágenes, cuadrados/círculos con borde)
+    const exitTimeline = gsap.timeline();
+    
+    // Ocultar Prompt
+    const promptElement = document.querySelector('.prompt');
+    if (promptElement) {
+      exitTimeline.to(promptElement, {
+        opacity: 0,
+        duration: 0.5,
+        ease: 'power2.in'
+      }, 0); // Empezar al mismo tiempo
+    }
+    
+    // Ocultar imágenes (cuadrados con imagen)
+    const imageSquares = document.querySelectorAll('.background__square');
+    if (imageSquares.length > 0) {
+      exitTimeline.to(imageSquares, {
+        opacity: 0,
+        scale: '+=0.3', // Continuar creciendo mientras desaparecen
+        duration: 0.6,
+        ease: 'power2.in',
+        stagger: 0.05
+      }, 0.1); // Empezar ligeramente después
+    }
+    
+    // Ocultar canvas de cuadrados/círculos con borde (sintetizador)
+    const borderSquaresCanvas = document.querySelector('.border-squares-synthesizer');
+    if (borderSquaresCanvas) {
+      exitTimeline.to(borderSquaresCanvas, {
+        opacity: 0,
+        duration: 0.5,
+        ease: 'power2.in'
+      }, 0.2);
+    }
+    
+    // Ocultar canvas de diagonales dinámicas
+    const diagonalCanvas = document.querySelector('.diagonal-synthesizer');
+    if (diagonalCanvas) {
+      exitTimeline.to(diagonalCanvas, {
+        opacity: 0,
+        duration: 0.5,
+        ease: 'power2.in'
+      }, 0.2);
+    }
+    
+    // Ocultar elementos de reproducción (Seek, AudioAnalyzer, BackButton, FullscreenButton)
+    if (playbackElementsRef.current) {
+      exitTimeline.to(playbackElementsRef.current, {
+        opacity: 0,
+        duration: 0.4,
+        ease: 'power2.in'
+      }, 0.3);
+    }
+    
+    // Esperar a que termine la animación
+    await exitTimeline;
+    
+    // 3. Llamar a onExit (esto mostrará el menú)
+    onExit();
+  }, [pauseAudio, onExit]);
+  
+  // Escuchar evento de ciclo completo de imágenes
+  React.useEffect(() => {
+    const handleImageCycleCompleted = (event) => {
+      const { segmentKey, audioIndex } = event.detail;
+      console.log('[CroquetasContent] Ciclo completo de imágenes detectado para audioIndex:', audioIndex);
+      
+      // Marcar que el ciclo se completó
+      imageCycleCompletedRef.current = true;
+      
+      // Verificar si es el último tramo
+      const isLastSegment = track?.segments && track.segments.length > 0 
+        ? audioIndex === track.segments.length - 1 
+        : audioIndex === (audios?.length || 1) - 1;
+      
+      if (isLastSegment) {
+        // Es el último tramo, hacer fade out y volver al menú
+        console.log('[CroquetasContent] Último tramo completado, volviendo al menú con fade');
+        shouldExitRef.current = true;
+        pauseAudio().then(() => {
+          setIsPlaying(false);
+      });
+    } else {
+        // No es el último tramo, cambiar al siguiente con fade
+        const nextIndex = audioIndex + 1;
+        console.log('[CroquetasContent] Cambiando al siguiente tramo:', nextIndex);
+        seekToAudio(nextIndex, 0).then(() => {
+          setIsPlaying(true);
+        });
+      }
+    };
+    
+    window.addEventListener('imageCycleCompleted', handleImageCycleCompleted);
+    return () => {
+      window.removeEventListener('imageCycleCompleted', handleImageCycleCompleted);
+    };
+  }, [track?.segments?.length, audios?.length, pauseAudio, seekToAudio, setIsPlaying]);
+  
+  // Volver al menú cuando se pausa después de completar el último tramo
+  React.useEffect(() => {
+    if (shouldExitRef.current && !isPlaying) {
+      // Usar handleExitWithAnimation en lugar de setTimeout
+      handleExitWithAnimation().then(() => {
+        shouldExitRef.current = false;
+      });
+    }
+  }, [isPlaying, handleExitWithAnimation]);
+  
+  // Resetear flag cuando cambia el tramo
+  React.useEffect(() => {
+    imageCycleCompletedRef.current = false;
+    // Resetear también el flag en window
+    if (typeof window !== 'undefined' && window.__imageCycleCompleted) {
+      window.__imageCycleCompleted[currentIndex] = false;
+    }
+  }, [currentIndex]);
   
   // Handlers para touch (móvil)
   const handleTouchStart = React.useCallback((e) => {
@@ -480,14 +669,19 @@ const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
     handleMouseUp(e);
   }, [handleMouseUp]);
   
+  // Generar className basado en el nombre de la colección
+  const collectionClassName = track ? normalizeId(track.name || track.id || '') : '';
+  
   return (
     <div 
+      className={collectionClassName ? `croquetas25-collection-${collectionClassName}` : ''}
       onMouseDown={handleMouseDown}
       onMouseUp={handleMouseUp}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
       style={{ width: '100%', height: '100%', position: 'relative' }}
     >
+    <div ref={backgroundContainerRef}>
     <Background 
         selectedTrack={track}
       analyserRef={analyserRef}
@@ -500,6 +694,7 @@ const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
         pause={pauseAudio}
         isPlaying={isPlaying}
       />
+    </div>
 
       {showLoading && (
         <div className="croquetas25__loading-layer">
@@ -509,8 +704,8 @@ const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
         </div>
       )}
 
-      {isPlaying && (
-        <>
+      {isPlaying && elementsVisible && (
+        <div className="croquetas25__playback-elements" ref={playbackElementsRef}>
     <AudioAnalyzer 
       audioRef={audioRef}
       analyserRef={analyserRef}
@@ -548,12 +743,11 @@ const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
     />
           )}
 
-          <BackButton onBack={onExit} />
-        </>
+          <BackButton onBack={handleExitWithAnimation} audioRef={audioRef} />
+          <FullscreenButton />
+        </div>
       )}
 
-      {/* Botón de pantalla completa */}
-      <FullscreenButton />
     </div>
   );
 };
