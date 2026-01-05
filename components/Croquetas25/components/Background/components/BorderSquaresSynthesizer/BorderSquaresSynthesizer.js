@@ -462,9 +462,10 @@ const BorderSquaresSynthesizer = ({
         colorStateRef.current.targetBaseLightness = newBaseColor.baseLightness;
       }
 
-      // Interpolar color base suavemente
+      // Interpolar color base suavemente con mayor velocidad para transiciones más suaves
       const colorState = colorStateRef.current;
-      const interpolationSpeed = 0.03;
+      // Aumentar la velocidad de interpolación para transiciones más suaves (de 0.03 a 0.08)
+      const interpolationSpeed = 0.08;
       
       // Interpolar hue base (manejar wrap-around)
       let hueDiff = Math.abs(colorState.targetBaseHue - colorState.baseHue);
@@ -498,19 +499,35 @@ const BorderSquaresSynthesizer = ({
       // Actualizar waveEventsRef para mantener solo ondas activas
       waveEventsRef.current = activeWaves;
 
+      // Función de easing para suavizar el movimiento (ease-out cubic)
+      const easeOutCubic = (t) => {
+        return 1 - Math.pow(1 - t, 3);
+      };
+      
+      // Función de easing más suave (ease-in-out cubic)
+      const easeInOutCubic = (t) => {
+        return t < 0.5
+          ? 4 * t * t * t
+          : 1 - Math.pow(-2 * t + 2, 3) / 2;
+      };
+
       activeWaves.forEach((wave, waveIndex) => {
         const elapsed = now - wave.startTime;
         // Calcular duración basada en intensidad (igual que el código original)
         // Más intensidad = menos duración (más rápido)
         const duration = BASE_DURATION - (wave.intensity * (BASE_DURATION - MIN_DURATION));
-        const progress = elapsed / duration;
+        const rawProgress = elapsed / duration;
 
-        if (progress >= 1) return;
+        if (rawProgress >= 1) return;
+
+        // Aplicar easing para suavizar el movimiento
+        // Usar ease-out para que empiece rápido y termine suave
+        const easedProgress = easeOutCubic(rawProgress);
 
         // Calcular escala (de 0 a 1.0, igual que GSAP)
         // El cuadrado debe crecer desde 0 hasta ocupar toda la pantalla (scale = 1.0)
         const targetScale = 1.0;
-        const scale = targetScale * progress; // scale va de 0 a 1.0 según el progress
+        const scale = targetScale * easedProgress; // scale va de 0 a 1.0 según el progress suavizado
 
         // Calcular opacidad basada en reactividad al audio
         // Si el audio está por encima del umbral, usar opacidad normal
@@ -518,12 +535,16 @@ const BorderSquaresSynthesizer = ({
         let baseOpacity = BASE_OPACITY;
         
         // Aplicar fade basado en progreso de la onda (fade out al final)
-        if (progress >= WAVE_FADE_START) {
-          const fadeProgress = (progress - WAVE_FADE_START) / (1.0 - WAVE_FADE_START);
-          baseOpacity = BASE_OPACITY * (1 - fadeProgress);
+        // Usar easedProgress para suavizar el fade out
+        if (rawProgress >= WAVE_FADE_START) {
+          const fadeProgress = (rawProgress - WAVE_FADE_START) / (1.0 - WAVE_FADE_START);
+          // Aplicar easing al fade out para que sea más suave
+          const easedFadeProgress = easeInOutCubic(fadeProgress);
+          baseOpacity = BASE_OPACITY * (1 - easedFadeProgress);
         }
         
         // Aplicar reactividad al audio: si el audio está por debajo del umbral, hacer fade out adicional
+        // Usar interpolación suave para las transiciones de opacidad
         let opacity = baseOpacity;
         if (!audioAboveThreshold && (wave.audioIndex === currentAudioIndex || wave.audioIndex === null)) {
           // Si el audio está por debajo del umbral, hacer fade out adicional
@@ -533,14 +554,18 @@ const BorderSquaresSynthesizer = ({
           }
           const fadeElapsed = now - wave.fadeStartTime;
           const fadeProgress = Math.min(fadeElapsed / FADE_OUT_DURATION, 1);
-          opacity = baseOpacity * (1 - fadeProgress);
+          // Aplicar easing al fade out para suavizar la transición
+          const easedFadeProgress = easeInOutCubic(fadeProgress);
+          opacity = baseOpacity * (1 - easedFadeProgress);
         } else {
           // Si el audio está por encima del umbral, hacer fade in si estaba desvanecida
           if (wave.fadeStartTime !== undefined) {
             const fadeElapsed = now - wave.fadeStartTime;
             const fadeProgress = Math.min(fadeElapsed / FADE_IN_DURATION, 1);
+            // Aplicar easing al fade in para suavizar la transición
+            const easedFadeProgress = easeInOutCubic(fadeProgress);
             const previousOpacity = wave.lastOpacity || 0;
-            opacity = previousOpacity + (baseOpacity - previousOpacity) * fadeProgress;
+            opacity = previousOpacity + (baseOpacity - previousOpacity) * easedFadeProgress;
           }
           // Resetear fadeStartTime cuando el audio vuelve a estar por encima del umbral
           wave.fadeStartTime = undefined;
@@ -556,9 +581,10 @@ const BorderSquaresSynthesizer = ({
         const finalHeight = viewportHeight * scale;
         
         // Debug: verificar que el tamaño sea correcto cuando está cerca de 1.0 (solo en desarrollo)
-        if (process.env.NODE_ENV === 'development' && progress > 0.95 && progress < 1.0) {
+        if (process.env.NODE_ENV === 'development' && rawProgress > 0.95 && rawProgress < 1.0) {
           console.log('[BorderSquaresSynthesizer] Cuadrado cerca del final:', {
-            progress,
+            progress: rawProgress,
+            easedProgress,
             scale,
             finalWidth,
             finalHeight,
