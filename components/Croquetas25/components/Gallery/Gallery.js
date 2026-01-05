@@ -9,6 +9,8 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
   // Controlador de imágenes: ready, loading, used
   const imageStatesRef = useRef(new Map());
   const currentIndexRef = useRef(0);
+  // Rastrear imágenes usadas recientemente para evitar repeticiones inmediatas
+  const recentlyUsedImagesRef = useRef(new Map()); // Map<imagePath, timestamp>
   const preloadQueueRef = useRef([]);
   const preloadingRef = useRef(false);
   const backgroundLoadingRef = useRef(false);

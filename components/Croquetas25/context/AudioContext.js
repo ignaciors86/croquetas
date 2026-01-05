@@ -107,6 +107,9 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
   const isChangingFromEndedRef = useRef(false); // Flag para evitar interferencia del useEffect principal
   const iosPreloadAudioElementsRef = useRef([]); // Refs para elementos Audio de pre-carga en iOS
   const seekToAudioRef = useRef(null); // Ref para seekToAudio para que handleEnded pueda usarlo
+  const isInitializingRef = useRef(false); // Flag para evitar doble ejecución durante inicialización
+  const preloadInProgressRef = useRef(false); // Flag para rastrear si preloadAllAudios está en progreso
+  const initializationAttemptsRef = useRef(0); // Contador de intentos de inicialización para evitar loops infinitos
 
   // El audioRef que se expone es siempre el actual
   const audioRef = currentAudioRef;
@@ -116,8 +119,16 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
     if (srcs.length <= 1) {
       setPreloadedAudios(true);
       setPreloadProgress(100);
+      preloadInProgressRef.current = false;
       return;
     }
+    
+    // Marcar que la pre-carga está en progreso
+    if (preloadInProgressRef.current) {
+      console.log('[AudioContext] preloadAllAudios ya está en progreso, ignorando llamada duplicada');
+      return;
+    }
+    preloadInProgressRef.current = true;
     
     // Limpiar audios anteriores si existen
     iosPreloadAudioElementsRef.current.forEach(audio => {
@@ -299,6 +310,9 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
         setIsLoaded(true);
       }
     }
+    
+    // Marcar que la pre-carga ha terminado
+    preloadInProgressRef.current = false;
   };
 
   // Listener global para resumir AudioContext en móviles - añadido temprano
@@ -344,9 +358,16 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
 
   // Cargar duraciones de todos los audios
   useEffect(() => {
+    // Evitar doble ejecución durante el montaje
+    if (isInitializingRef.current) {
+      console.log('[AudioContext] Inicialización ya en progreso, ignorando useEffect de duraciones');
+      return;
+    }
+    
     // Resetear estado de pre-carga cuando cambian los audios
     setPreloadedAudios(false);
     setPreloadProgress(0);
+    preloadInProgressRef.current = false;
     
     if (!validAudioSrcs || validAudioSrcs.length === 0) {
       setAudioDurations([]);
@@ -663,6 +684,38 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
       return;
     }
     
+    // Evitar doble ejecución durante la inicialización
+    if (isInitializingRef.current) {
+      console.log('[AudioContext] Inicialización ya en progreso, ignorando useEffect principal');
+      return;
+    }
+    
+    // Si hay múltiples audios y la pre-carga está en progreso, esperar
+    if (validAudioSrcs.length > 1 && preloadInProgressRef.current) {
+      console.log('[AudioContext] Pre-carga en progreso, esperando antes de configurar audio...');
+      // Reintentar después de un breve delay
+      const retryTimeout = setTimeout(() => {
+        if (!preloadInProgressRef.current) {
+          // La pre-carga terminó, continuar con la configuración
+          console.log('[AudioContext] Pre-carga completada, continuando con configuración');
+          // Forzar re-ejecución del useEffect actualizando una dependencia
+          setCurrentIndex(prev => prev);
+        }
+      }, 100);
+      return () => clearTimeout(retryTimeout);
+    }
+    
+    // Marcar que la inicialización está en progreso
+    isInitializingRef.current = true;
+    initializationAttemptsRef.current++;
+    
+    // Limitar intentos para evitar loops infinitos
+    if (initializationAttemptsRef.current > 10) {
+      console.warn('[AudioContext] Demasiados intentos de inicialización, deteniendo');
+      isInitializingRef.current = false;
+      return;
+    }
+    
     // Declarar variables que se usarán en el cleanup
     let progressIntervalId = null;
     let audioCleanup = null;
@@ -970,7 +1023,16 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
     
     const handleCanPlay = async () => {
       updateProgress();
-      await setupAudioContext();
+      try {
+        await setupAudioContext();
+        // Marcar que la inicialización ha terminado después de setupAudioContext
+        isInitializingRef.current = false;
+        initializationAttemptsRef.current = 0;
+      } catch (err) {
+        console.error('[AudioContext] Error en setupAudioContext desde handleCanPlay:', err);
+        isInitializingRef.current = false; // Resetear incluso si hay error
+      }
+      
       // Marcar como cargado si tenemos suficiente readyState
       // En iOS/Safari, ser más permisivo
       if (audio.readyState >= 1) {
@@ -1141,6 +1203,9 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
       }, progressInterval);
     }
 
+    // setupAudioContext se llamará desde handleCanPlay cuando el audio esté listo
+    // El flag isInitializingRef se reseteará en handleCanPlay después de setupAudioContext
+
     return () => {
       if (progressIntervalId) {
         clearInterval(progressIntervalId);
@@ -1157,12 +1222,24 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
       if (transitionTimeoutRef.current) {
         clearTimeout(transitionTimeoutRef.current);
       }
+      
+      // Marcar que la inicialización ha terminado al desmontar
+      isInitializingRef.current = false;
+      initializationAttemptsRef.current = 0; // Resetear contador al desmontar
     };
   }, [validAudioSrcs, currentIndex]);
 
   // useEffect separado para configurar AudioContext cuando el audio simple esté listo
+  // CONSOLIDADO: Este useEffect ahora está integrado en el principal, pero lo mantenemos como fallback
   useEffect(() => {
+    // Evitar doble ejecución si ya estamos inicializando
+    if (isInitializingRef.current) {
+      return;
+    }
+    
     if (useSimpleAudio && isLoaded && currentAudioRef.current && !isInitialized) {
+      // Marcar que la inicialización está en progreso
+      isInitializingRef.current = true;
       const audio = currentAudioRef.current;
       
       const setupAudioContext = async () => {
@@ -1260,7 +1337,10 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
         }
       };
 
-      setupAudioContext();
+      setupAudioContext().finally(() => {
+        // Marcar que la inicialización ha terminado
+        isInitializingRef.current = false;
+      });
     }
   }, [useSimpleAudio, isLoaded, isInitialized]);
 

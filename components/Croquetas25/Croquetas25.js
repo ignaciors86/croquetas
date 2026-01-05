@@ -179,9 +179,19 @@ const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
     playRef.current = play;
   }, [play]);
 
+  // Ref para evitar múltiples ejecuciones del play automático
+  const playAttemptedRef = React.useRef(false);
+  
   React.useEffect(() => {
-    if (everythingReady && !autoPlayAttempted && !isPlaying) {
+    // Resetear el flag si everythingReady cambia a false (nuevo track)
+    if (!everythingReady) {
+      playAttemptedRef.current = false;
+      return;
+    }
+    
+    if (everythingReady && !autoPlayAttempted && !isPlaying && !playAttemptedRef.current) {
       console.log('[CroquetasContent] Todo listo, iniciando play...');
+      playAttemptedRef.current = true; // Marcar inmediatamente para evitar doble ejecución
       setAutoPlayAttempted(true);
       setLoadingFadedOut(true);
       
@@ -198,6 +208,7 @@ const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
             setIsPlaying(true);
           }).catch((err2) => {
             console.log('[CroquetasContent] Error en reintento de play', err2);
+            playAttemptedRef.current = false; // Permitir reintento si falla completamente
           });
               }, 300);
       });

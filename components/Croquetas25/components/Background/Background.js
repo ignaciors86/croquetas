@@ -39,6 +39,7 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
   }, [isLoading, allImages.length, preloadNextImages]);
   
   const lastImageTimeRef = useRef(0);
+  const lastImageUrlRef = useRef(null); // Rastrear la última imagen usada para evitar repeticiones
   
   // Manejar resize y fullscreen changes para recalcular dimensiones
   useEffect(() => {
