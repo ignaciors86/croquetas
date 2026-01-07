@@ -49,21 +49,17 @@ const Intro = ({ tracks, onTrackSelect, onStartPlayback = null, selectedTrackId 
     }
     
     // Simplificado: siempre permitir clics en croquetas normales
-    console.log('[Intro] handleTrackSelect llamando onTrackSelect con:', track.name);
     onTrackSelect?.(track);
   }, [isAnimating, isMainCroqueta, onTrackSelect]);
 
   const handleCroquetaClick = useCallback((track, index) => (e) => {
     e?.stopPropagation?.();
     e?.preventDefault?.();
-    console.log('[Intro] handleCroquetaClick en:', track.name, 'isMain:', isMainCroqueta(track));
     // Si es la croqueta activa (main) y hay onStartPlayback, usar onStartPlayback para empezar
     if (onStartPlayback && isMainCroqueta(track)) {
-      console.log('[Intro] Llamando onStartPlayback');
       onStartPlayback(e);
     } else {
       // Si es una croqueta normal, establecer selectedTrack
-      console.log('[Intro] Llamando handleTrackSelect');
       handleTrackSelect(track, index);
     }
   }, [handleTrackSelect, onStartPlayback, isMainCroqueta]);

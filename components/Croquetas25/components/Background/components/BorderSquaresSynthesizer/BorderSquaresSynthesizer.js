@@ -173,8 +173,7 @@ const BorderSquaresSynthesizer = ({
           try {
             originalCallback(type, data);
           } catch (error) {
-            console.error('[BorderSquaresSynthesizer] Error en callback original:', error);
-          }
+            }
         }
         
         // Llamar al handler del sintetizador
@@ -582,17 +581,7 @@ const BorderSquaresSynthesizer = ({
         
         // Debug: verificar que el tamaño sea correcto cuando está cerca de 1.0 (solo en desarrollo)
         if (process.env.NODE_ENV === 'development' && rawProgress > 0.95 && rawProgress < 1.0) {
-          console.log('[BorderSquaresSynthesizer] Cuadrado cerca del final:', {
-            progress: rawProgress,
-            easedProgress,
-            scale,
-            finalWidth,
-            finalHeight,
-            viewportWidth,
-            viewportHeight,
-            ratio: finalWidth / viewportWidth
-          });
-        }
+          }
         const widthRatio = finalWidth / viewportWidth;
         const heightRatio = finalHeight / viewportHeight;
         const maxRatio = Math.max(widthRatio, heightRatio);

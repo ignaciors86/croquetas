@@ -38,7 +38,6 @@ const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstance
   useEffect(() => {
     // Si cambian los textos, resetear todo
     if (validTextos.length !== lastTextosLengthRef.current) {
-      console.log('[Prompt] Cambio de textos detectado, reseteando');
       setCurrentTextIndex(-1);
       lastTextIndexRef.current = -1;
       setDisplayText('');
@@ -52,7 +51,6 @@ const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstance
     // Si cambia la duración (cambio de tramo), resetear
     if (duration !== lastDurationRef.current) {
       if (duration > 0 && lastDurationRef.current > 0) {
-        console.log('[Prompt] Cambio de duración detectado (cambio de tramo):', lastDurationRef.current, '->', duration);
         // Resetear el índice de texto cuando cambia el tramo
         setCurrentTextIndex(-1);
         lastTextIndexRef.current = -1;
@@ -69,16 +67,12 @@ const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstance
   // Calcular tiempos para cada texto
   const textTimings = useMemo(() => {
     if (validTextos.length === 0) {
-      console.log('[Prompt] No hay textos válidos para calcular timings');
       return [];
     }
     
     if (!duration || duration === 0) {
-      console.log('[Prompt] Duration es 0, no se pueden calcular timings');
       return [];
     }
-    
-    console.log('[Prompt] Calculando timings para', validTextos.length, 'textos, duration:', duration.toFixed(2));
     
     // Calcular tiempo total necesario para todos los textos
     let totalTimeNeeded = 0;
@@ -110,7 +104,6 @@ const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstance
     
     // Si el tiempo necesario es mayor que la duración, escalar proporcionalmente
     const scaleFactor = duration / totalTimeNeeded;
-    console.log('[Prompt] Tiempo total necesario:', totalTimeNeeded.toFixed(2), 'scaleFactor:', scaleFactor.toFixed(4));
     
     // Calcular tiempos de inicio y fin para cada texto
     let accumulatedTime = 0;
@@ -143,13 +136,6 @@ const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstance
         scaledPauseTime
       };
     });
-    
-    console.log('[Prompt] Timings calculados:', result.map((t, i) => ({
-      index: i,
-      text: t.text.substring(0, 30),
-      start: t.startTime.toFixed(2),
-      end: t.endTime.toFixed(2)
-    })));
     
     return result;
   }, [validTextos, duration]);
@@ -299,8 +285,6 @@ const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstance
   
   // Crear timeline de GSAP cuando cambia el índice del texto
   useEffect(() => {
-    console.log('[Prompt] useEffect timeline - currentTextIndex:', currentTextIndex, 'lastTextIndex:', lastTextIndexRef.current, 'textTimings.length:', textTimings.length);
-    
     if (currentTextIndex === -1) {
       // Ocultar prompt si no hay texto
       // IMPORTANTE: Solo ocultar si realmente no hay texto que mostrar
@@ -314,7 +298,6 @@ const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstance
       }
       if (promptRef.current && textContainerRef.current && lastTextIndexRef.current >= 0) {
         // Solo ocultar si había un texto visible anteriormente
-        console.log('[Prompt] Ocultando prompt (currentTextIndex === -1)');
         gsap.to([promptRef.current, textContainerRef.current], {
           opacity: 0,
           height: 0,
@@ -330,13 +313,11 @@ const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstance
     }
     
     if (!promptRef.current || !textContainerRef.current) {
-      console.log('[Prompt] Refs no disponibles, esperando...');
       return;
     }
     
     const timing = textTimings[currentTextIndex];
     if (!timing) {
-      console.log('[Prompt] No hay timing para índice:', currentTextIndex);
       return;
     }
     
@@ -344,21 +325,10 @@ const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstance
     const isNewText = currentTextIndex !== lastTextIndexRef.current;
     const wasVisible = lastTextIndexRef.current >= 0;
     
-    console.log('[Prompt] Procesando texto:', {
-      currentTextIndex,
-      isNewText,
-      wasVisible,
-      text: text.substring(0, 30),
-      timingStart: timing.startTime.toFixed(2),
-      timingEnd: timing.endTime.toFixed(2)
-    });
-    
     // Si es un texto nuevo, crear un nuevo timeline
     if (isNewText) {
-      console.log('[Prompt] Creando nuevo timeline para texto:', currentTextIndex);
       // Matar timeline anterior si existe
       if (timelineRef.current) {
-        console.log('[Prompt] Matando timeline anterior');
         timelineRef.current.kill();
         timelineRef.current = null;
       }
@@ -553,27 +523,31 @@ const Prompt = ({ textos = [], currentTime = 0, duration = 0, typewriterInstance
   }, [currentTextIndex, textTimings, validTextos]); // Remover currentTime de dependencias
   
   // Sincronizar el timeline con el tiempo actual del audio (separado para no bloquear)
-  // Usar requestAnimationFrame para evitar bloquear cuando currentTime cambia frecuentemente
+  // Usar un intervalo en lugar de depender directamente de currentTime para evitar ejecuciones excesivas
+  const currentTimeRef = useRef(currentTime);
+  useEffect(() => {
+    currentTimeRef.current = currentTime;
+  }, [currentTime]);
+  
   useEffect(() => {
     if (timelineRef.current && currentTextIndex !== -1 && textTimings.length > 0) {
-      const timing = textTimings[currentTextIndex];
-      if (timing) {
-        // Usar requestAnimationFrame para sincronizar sin bloquear
-        const rafId = requestAnimationFrame(() => {
-          if (timelineRef.current && currentTextIndex !== -1) {
-            const timing = textTimings[currentTextIndex];
-            if (timing) {
-              const relativeTime = currentTime - timing.startTime;
-              const wasVisible = lastTextIndexRef.current >= 0;
-              updateTimelinePositionRef.current(timelineRef.current, relativeTime, timing, wasVisible);
-            }
+      const syncTimeline = () => {
+        if (timelineRef.current && currentTextIndex !== -1) {
+          const timing = textTimings[currentTextIndex];
+          if (timing) {
+            const relativeTime = currentTimeRef.current - timing.startTime;
+            const wasVisible = lastTextIndexRef.current >= 0;
+            updateTimelinePositionRef.current(timelineRef.current, relativeTime, timing, wasVisible);
           }
-        });
-        
-        return () => cancelAnimationFrame(rafId);
-      }
+        }
+      };
+      
+      syncTimeline();
+      const intervalId = setInterval(syncTimeline, 100);
+      
+      return () => clearInterval(intervalId);
     }
-  }, [currentTime, currentTextIndex, textTimings]);
+  }, [currentTextIndex, textTimings]);
   
   // Cleanup al desmontar
   useEffect(() => {

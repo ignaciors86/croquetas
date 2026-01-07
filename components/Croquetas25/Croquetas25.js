@@ -43,14 +43,12 @@ const Croquetas25 = () => {
 
   // Cuando se hace clic en cualquier croqueta: establecer selectedTrack y empezar
   const handleCroquetaClick = (track) => {
-    console.log('[Croquetas25] Clic en croqueta:', track.name);
     setSelectedTrack(track);
     window.history.replaceState({}, '', `/${normalizeId(track.id || track.name)}`);
   };
 
   // Cuando se hace clic en una croqueta normal: establecer selectedTrack y empezar
   const handleTrackSelect = (track) => {
-    console.log('[Croquetas25] Seleccionando croqueta normal:', track.name);
     handleCroquetaClick(track);
   };
 
@@ -59,7 +57,6 @@ const Croquetas25 = () => {
     e?.stopPropagation?.();
     e?.preventDefault?.();
     if (mainTrack) {
-      console.log('[Croquetas25] Iniciando reproducción de:', mainTrack.name);
       handleCroquetaClick(mainTrack);
     }
   };
@@ -225,14 +222,12 @@ const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
     }
     
     if (everythingReady && !autoPlayAttempted && !isPlaying && !playAttemptedRef.current) {
-      console.log('[CroquetasContent] Todo listo, iniciando play...');
       playAttemptedRef.current = true; // Marcar inmediatamente para evitar doble ejecución
       setAutoPlayAttempted(true);
       setLoadingFadedOut(true);
       
       // Iniciar play inmediatamente (el usuario ya hizo clic en la croqueta)
       playRef.current().then(() => {
-        console.log('[CroquetasContent] Play iniciado correctamente');
         setIsPlaying(true);
         // Mostrar elementos de reproducción con animación suave
         setElementsVisible(true);
@@ -274,7 +269,6 @@ const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
           }
         });
       }).catch((err) => {
-        console.log('[CroquetasContent] Error en play, reintentando...', err);
         // Si falla, el efecto de reintento se encargará
         playAttemptedRef.current = false;
       });
@@ -312,7 +306,6 @@ const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
     
     const segment = track.segments.find(s => s.audioIndex === currentIndex);
     if (segment) {
-      console.log('[CroquetasContent] Segmento activo cambiado a:', currentIndex, segment);
       setActiveSegment(segment);
       
       // Actualizar duración del segmento
@@ -341,13 +334,11 @@ const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
             if (exportMatch) {
               const objStr = exportMatch[1];
               const guionData = new Function('return ' + objStr)();
-              console.log('[CroquetasContent] Guion cargado del track:', guionData);
               setGuion(guionData);
       } else {
               setGuion(null);
             }
       } catch (error) {
-            console.error('[CroquetasContent] Error cargando guion del track:', error);
             setGuion(null);
           }
         };
@@ -360,7 +351,6 @@ const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
 
     // Cargar guion del segmento activo
     if (!activeSegment.guion) {
-      console.log('[CroquetasContent] No hay guion para el segmento activo');
       setGuion(null);
       return;
     }
@@ -378,18 +368,14 @@ const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
           const objStr = exportMatch[1];
           try {
             const guionData = new Function('return ' + objStr)();
-            console.log('[CroquetasContent] Guion cargado para segmento', activeSegment.audioIndex, ':', guionData, 'textos:', guionData?.textos?.length);
             setGuion(guionData);
           } catch (parseError) {
-            console.error('[CroquetasContent] Error parseando objeto del guion:', parseError);
             setGuion(null);
           }
             } else {
-          console.warn('[CroquetasContent] No se encontró export default en el guion');
           setGuion(null);
         }
       } catch (error) {
-        console.error('[CroquetasContent] Error cargando guion:', error, 'path:', activeSegment.guion);
         setGuion(null);
       }
     };
@@ -407,7 +393,6 @@ const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
     if (isLoaded && audioDurations && audioDurations.length > 0) {
       const totalDuration = getTotalDurationRef.current();
       if (totalDuration > 0 && totalDuration !== duration) {
-        console.log('[CroquetasContent] Actualizando duration:', totalDuration);
         setDuration(totalDuration);
       }
     }
@@ -484,7 +469,7 @@ const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
     if (isPlaying) {
       pauseAudio().then(() => {
         setIsPlaying(false);
-      }).catch(err => console.error('[CroquetasContent] Error pausando:', err));
+      }).catch(() => {});
     }
     
     // Configurar timeout para detectar si es un clic simple o mantener pulsado
@@ -521,19 +506,19 @@ const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
       // Reanudar solo si estaba reproduciendo antes
       play().then(() => {
         setIsPlaying(true);
-      }).catch(err => console.error('[CroquetasContent] Error reanudando:', err));
+      }).catch(() => {});
     } else if (wasHolding && holdDuration <= 200) {
       // Si fue un clic rápido (menos de 200ms), toggle play/pause
       if (wasPlayingBefore) {
         // Estaba reproduciendo, ahora está pausado (por el mousedown), reanudar (toggle)
         play().then(() => {
           setIsPlaying(true);
-        }).catch(err => console.error('[CroquetasContent] Error reanudando:', err));
+        }).catch(() => {});
     } else {
         // Estaba pausado, iniciar reproducción
         play().then(() => {
           setIsPlaying(true);
-        }).catch(err => console.error('[CroquetasContent] Error reproduciendo:', err));
+        }).catch(() => {});
       }
     }
   }, [isPlaying, pauseAudio, play, setIsPlaying]);
@@ -608,8 +593,6 @@ const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
   React.useEffect(() => {
     const handleImageCycleCompleted = (event) => {
       const { segmentKey, audioIndex } = event.detail;
-      console.log('[CroquetasContent] Ciclo completo de imágenes detectado para audioIndex:', audioIndex);
-      
       // Marcar que el ciclo se completó
       imageCycleCompletedRef.current = true;
       
@@ -620,7 +603,6 @@ const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
       
       if (isLastSegment) {
         // Es el último tramo, hacer fade out y volver al menú
-        console.log('[CroquetasContent] Último tramo completado, volviendo al menú con fade');
         shouldExitRef.current = true;
         pauseAudio().then(() => {
           setIsPlaying(false);
@@ -628,7 +610,6 @@ const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
     } else {
         // No es el último tramo, cambiar al siguiente con fade
         const nextIndex = audioIndex + 1;
-        console.log('[CroquetasContent] Cambiando al siguiente tramo:', nextIndex);
         seekToAudio(nextIndex, 0).then(() => {
           setIsPlaying(true);
         });

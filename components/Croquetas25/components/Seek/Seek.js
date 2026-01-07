@@ -238,7 +238,6 @@ const Seek = ({ squares, seekToImagePosition, selectedTrack, audioRef, currentAu
       
       // Usar seekToAudio para cambio con fade
       if (setCurrentAudioIndex) {
-        console.log(`[Seek] Cambiando de audio ${currentAudioIndex} a ${targetAudioIndex}, tiempo: ${targetTime}`);
         setCurrentAudioIndex(targetAudioIndex, targetTime);
       } else {
         // Fallback: solo hacer seek si no hay función

@@ -149,8 +149,7 @@ const DiagonalSynthesizer = ({
     diagonalEventsRef.current = initialDiagonales;
     lastDiagonalAngleRef.current = -135;
     isInitializedRef.current = true;
-    console.log('[DiagonalSynthesizer] Diagonales iniciales creadas:', initialDiagonales.length);
-  }, []);
+    }, []);
 
   // Función para procesar eventos del sintetizador - definida con useCallback para poder usarla como dependencia
   const handleVoiceEvent = useCallback((intensity = 0.5, voiceEnergy = 0) => {
@@ -167,17 +166,7 @@ const DiagonalSynthesizer = ({
     // DEBUG: Log cuando se generan diagonales o cuando debería pero no hay
     if (effectiveIntensity >= MIN_INTENSITY_THRESHOLD || hasSignificantVoice) {
       if (diagonalEventsRef.current.length === 0 || Math.random() < 0.05) { // Solo 5% de las veces para no saturar
-        console.log('[DiagonalSynthesizer] handleVoiceEvent:', {
-          intensity,
-          voiceEnergy,
-          effectiveIntensity,
-          threshold: MIN_INTENSITY_THRESHOLD,
-          aboveThreshold: effectiveIntensity >= MIN_INTENSITY_THRESHOLD || hasSignificantVoice,
-          timeSinceLast: now - lastDiagonalTimeRef.current,
-          minTimeBetween: MIN_TIME_BETWEEN_DIAGONALS,
-          currentDiagonals: diagonalEventsRef.current.length
-        });
-      }
+        }
     }
     
     // Filtrar por umbral de intensidad mínimo (más permisivo si hay energía de voz)
@@ -225,15 +214,7 @@ const DiagonalSynthesizer = ({
       currentOpacity: initialOpacity // Inicializar opacidad actual
     };
     diagonalEventsRef.current.push(newDiagonal);
-    console.log('[DiagonalSynthesizer] Nueva diagonal creada:', {
-      id: newDiagonal.id,
-      intensity,
-      voiceEnergy,
-      initialOpacity,
-      audioIndex: currentAudioIndex,
-      totalDiagonals: diagonalEventsRef.current.length
-    });
-  }, [currentAudioIndex]);
+    }, [currentAudioIndex]);
 
   // Escuchar eventos de voz para generar nuevas diagonales
   useEffect(() => {
@@ -251,8 +232,6 @@ const DiagonalSynthesizer = ({
       
       // Si no está envuelto, Background.js puede haber recreado el callback
       // Necesitamos envolverlo de nuevo
-      console.log('[DiagonalSynthesizer] Callback no envuelto, envolviendo...', typeof onVoiceCallbackRef.current);
-
       // Guardar el callback original (puede ser el de Diagonales.js o uno nuevo)
       const originalCallback = onVoiceCallbackRef.current;
       
@@ -263,16 +242,14 @@ const DiagonalSynthesizer = ({
           try {
             originalCallback(intensity, voiceEnergy);
           } catch (error) {
-            console.error('[DiagonalSynthesizer] Error en callback original:', error);
-          }
+            }
         }
         
         // Llamar al handler del sintetizador (siempre, incluso si el callback original falla)
         try {
           handleVoiceEvent(intensity, voiceEnergy);
         } catch (error) {
-          console.error('[DiagonalSynthesizer] Error en handleVoiceEvent:', error);
-        }
+          }
       };
 
       // Marcar como envuelto
@@ -280,8 +257,7 @@ const DiagonalSynthesizer = ({
 
       // Reemplazar el callback con nuestro wrapper
       onVoiceCallbackRef.current = wrapperCallback;
-      console.log('[DiagonalSynthesizer] Callback envuelto. handleVoiceEvent disponible:', typeof handleVoiceEvent === 'function');
-    }, 100); // Verificar cada 100ms continuamente
+      }, 100); // Verificar cada 100ms continuamente
 
     return () => {
       clearInterval(setupInterval);
@@ -453,11 +429,9 @@ const DiagonalSynthesizer = ({
           return opacity > 0.01;
         }).length;
         if (visibleCount === 0 && audioAboveThreshold && Math.random() < 0.1) {
-          console.log('[DiagonalSynthesizer] Hay diagonales pero ninguna visible. Total:', diagonalEventsRef.current.length, 'audioAboveThreshold:', audioAboveThreshold);
-        }
+          }
       } else if (audioAboveThreshold && Math.random() < 0.1) {
-        console.log('[DiagonalSynthesizer] No hay diagonales pero audioAboveThreshold es true. effectiveIntensity:', effectiveIntensity);
-      }
+        }
 
       // Dibujar todas las diagonales activas
       diagonalEventsRef.current.forEach(diag => {

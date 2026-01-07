@@ -129,8 +129,7 @@ const FullscreenButton = () => {
         }
       }
     } catch (error) {
-      console.warn('[FullscreenButton] Error al cambiar pantalla completa:', error);
-    }
+      }
   }, [isFullscreen]);
 
   // Solo mostrar en desktop si no hay soporte móvil, o en móvil si hay soporte

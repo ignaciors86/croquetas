@@ -129,13 +129,11 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
     
     // Evitar doble ejecución
     if (preloadInProgressRef.current) {
-      console.log('[AudioContext] initializeAllAudios ya está en progreso, ignorando llamada duplicada');
       return;
     }
     
     // Si ya están inicializados con el mismo número de audios, no hacer nada
     if (audioElementsRef.current.length === srcs.length) {
-      console.log('[AudioContext] Audios ya inicializados, ignorando llamada duplicada');
       return;
     }
     
@@ -234,8 +232,7 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
             cleanup();
             durations[i] = 0;
             if (audio.error) {
-              console.warn(`[AudioContext] Error cargando audio ${i}:`, audio.error.message);
-            }
+              }
             resolve();
           }
         };
@@ -249,7 +246,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
         try {
           audio.load();
         } catch (error) {
-          console.warn(`[AudioContext] Error al llamar load() en audio ${i}:`, error);
           if (!resolved) {
             resolved = true;
             cleanup();
@@ -273,7 +269,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
           setIsLoaded(true);
           setLoadingProgress(100);
           firstAudioReady = true;
-          console.log(`[AudioContext] Primer audio (índice 0) listo, marcando como cargado. Duración: ${durations[0]}s`);
         }
         
         // Actualizar progreso del primer audio
@@ -293,21 +288,16 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
       for (let i = 1; i < srcs.length; i++) {
         const audioIndex = i; // Capturar el índice para el closure
         loadPromises.push(
-          loadAudio(audioIndex, srcs[audioIndex]).then(audio => {
-            if (audio) {
-              audioElementsRef.current[audioIndex] = audio; // Asegurar que esté en el índice correcto
-              // Actualizar progreso
-              const progress = Math.round(((audioIndex + 1) / srcs.length) * 100);
-              setPreloadProgress(progress);
-              console.log(`[AudioContext] Audio ${audioIndex} cargado en background`);
-            }
-          })
+        loadAudio(audioIndex, srcs[audioIndex]).then(audio => {
+          if (audio) {
+            audioElementsRef.current[audioIndex] = audio;
+          }
+        })
         );
       }
       
       // Esperar a que todos terminen en background (no bloquea el inicio)
       Promise.all(loadPromises).then(() => {
-        console.log(`[AudioContext] Todos los ${srcs.length} audios inicializados (background)`);
       });
     }
     
@@ -318,8 +308,7 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
     setPreloadedAudios(true);
     preloadInProgressRef.current = false;
     
-    console.log(`[AudioContext] Primer audio listo, ${srcs.length - 1} audios restantes cargando en background`);
-  };
+    };
   
   // Función legacy para compatibilidad (será reemplazada)
   const preloadAllAudios = async (srcs) => {
@@ -338,7 +327,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
     
     // Marcar que la pre-carga está en progreso
     if (preloadInProgressRef.current) {
-      console.log('[AudioContext] preloadAllAudios ya está en progreso, ignorando llamada duplicada');
       return;
     }
     preloadInProgressRef.current = true;
@@ -420,7 +408,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
           if (!resolved && audio.readyState >= 3) {
             resolved = true;
             cleanup();
-            console.log(`[AudioContext] Audio ${i} pre-cargado (canplaythrough, readyState: ${audio.readyState})`);
             resolve();
           }
         };
@@ -429,7 +416,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
           if (!resolved && audio.readyState >= 2) {
             resolved = true;
             cleanup();
-            console.log(`[AudioContext] Audio ${i} pre-cargado (loadeddata, readyState: ${audio.readyState})`);
             resolve();
           }
         };
@@ -439,7 +425,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
           if (!resolved && audio.readyState >= 1 && audio.duration && isFinite(audio.duration) && audio.duration > 0) {
             resolved = true;
             cleanup();
-            console.log(`[AudioContext] Audio ${i} pre-cargado (loadedmetadata, readyState: ${audio.readyState})`);
             resolve();
           }
         };
@@ -450,7 +435,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
             cleanup();
             // Log simple del error, sin reintentos
             if (audio.error) {
-              console.warn(`[AudioContext] Error pre-cargando audio ${i}:`, audio.error.message);
             }
             resolve();
           }
@@ -466,7 +450,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
         try {
           audio.load();
         } catch (error) {
-          console.warn(`[AudioContext] Error al llamar load() en audio ${i}:`, error);
           if (!resolved) {
             resolved = true;
             cleanup();
@@ -483,7 +466,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
       // Chrome iOS siempre necesita múltiples elementos cuando hay múltiples audios
       if (isChromeIOSLocal && srcs.length > 1) {
         audioElementsRef.current.push(audio);
-        console.log(`[AudioContext] Chrome iOS: Audio ${i} guardado en audioElementsRef`);
       } else if (isIOS && srcs.length > 1 && !isChromeIOSLocal) {
         // Safari iOS también puede necesitarlo
         audioElementsRef.current.push(audio);
@@ -497,14 +479,12 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
       // Esto ayuda a que el loading no se quede atascado
       if (isIOS && audio.readyState >= 1 && i === srcs.length - 1) {
         // Si es el último audio y tiene metadata, marcar como cargado
-        console.log('[AudioContext] Último audio pre-cargado con metadata, marcando como cargado');
         setPreloadedAudios(true);
         setPreloadProgress(100);
         setIsLoaded(true);
       }
     }
     
-    console.log('[AudioContext] Todos los audios pre-cargados');
     setPreloadedAudios(true);
     setPreloadProgress(100);
     
@@ -514,12 +494,10 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
       // Verificar si al menos el primer audio tiene metadata
       const firstAudio = iosPreloadAudioElementsRef.current[0];
       if (firstAudio && firstAudio.readyState >= 1) {
-        console.log('[AudioContext] Safari iOS: Primer audio tiene metadata, marcando como cargado');
         setIsLoaded(true);
       } else if (srcs.length === 1) {
         // Si solo hay un audio y no tiene metadata aún, darle un poco más de tiempo
         // pero marcar como cargado de todas formas (Safari puede cargar bajo demanda)
-        console.log('[AudioContext] Safari iOS: Un solo audio, marcando como cargado (carga bajo demanda)');
         setIsLoaded(true);
       }
     }
@@ -548,9 +526,7 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
         try {
           await audioContext.resume();
           hasResumed = true;
-          console.log('[AudioContext] AudioContext resumido desde interacción global del usuario (móvil)');
         } catch (err) {
-          console.warn('[AudioContext] Error resumiendo AudioContext desde interacción global:', err);
         }
       } else if (audioContext && audioContext.state === 'running') {
         hasResumed = true;
@@ -573,7 +549,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
   useEffect(() => {
     // Evitar doble ejecución durante el montaje
     if (isInitializingRef.current) {
-      console.log('[AudioContext] Inicialización ya en progreso, ignorando useEffect de duraciones');
       return;
     }
     
@@ -626,7 +601,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
                 resolved = true;
                 if (audio.duration && isFinite(audio.duration) && audio.duration > 0) {
                   durations[i] = audio.duration;
-                  console.log(`[AudioContext] Duration loaded for audio ${i}: ${audio.duration.toFixed(2)}s`);
                 } else {
                   durations[i] = 0;
                 }
@@ -656,31 +630,18 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
             audio.load();
           });
         } catch (error) {
-          console.warn(`[AudioContext] Error loading duration for audio ${i}:`, error);
           durations[i] = 0;
         }
       }
 
       setAudioDurations(durations);
       
-      // Si tenemos duraciones cargadas, considerar el audio como listo para reproducir
-      // (especialmente para un solo audio)
-      if (durations.length > 0 && durations[0] > 0) {
-        console.log('[AudioContext] Duración cargada, marcando audio como listo para reproducir');
-        setIsLoaded(true);
-        setLoadingProgress(100);
-      }
-      
       // NUEVA LÓGICA: Inicializar TODOS los audios al principio (uno o más)
       // Solo inicializar si no está en progreso y si audioElementsRef está vacío
+      // initializeAllAudios ya marca isLoaded cuando el primer audio está listo
       if (!preloadInProgressRef.current && audioElementsRef.current.length === 0) {
-        console.log(`[AudioContext] Inicializando ${validAudioSrcs.length} audio(s)...`);
         initializeAllAudios(validAudioSrcs);
-      } else if (preloadInProgressRef.current) {
-        console.log('[AudioContext] Inicialización ya en progreso, ignorando llamada duplicada');
-      } else if (audioElementsRef.current.length > 0) {
-        console.log('[AudioContext] Audios ya inicializados, ignorando llamada duplicada');
-      }
+    }
     };
 
     loadDurations();
@@ -693,7 +654,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
       audioSrcsRef.current = validAudioSrcs;
       // Actualizar currentIndexRef solo si realmente cambió (para evitar sobrescribir cambios de seekToAudio que ya lo actualizaron)
       if (currentIndexRef.current !== currentIndex) {
-        console.log(`[AudioContext] Sincronizando currentIndexRef: ${currentIndexRef.current} -> ${currentIndex}`);
         currentIndexRef.current = currentIndex;
       }
     }
@@ -712,106 +672,43 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
     }
   }, [validAudioSrcs, currentIndex]);
 
-  // Listener estable para el evento 'ended' - separado del useEffect principal
   useEffect(() => {
     const audio = currentAudioRef.current;
     if (!audio) return;
 
     const handleEnded = () => {
-      console.log('[AudioContext] Audio ended event fired');
-      const currentAudio = currentAudioRef.current;
-      if (!currentAudio) return;
-      
-      // Si ya estamos haciendo fade out (fade automático), ignorar el evento ended
-      if (fadeOutTweenRef.current && fadeOutTweenRef.current.isActive()) {
-        console.log('[AudioContext] Ignorando ended porque ya hay fade out en curso');
-        return;
-      }
+      if (fadeOutTweenRef.current?.isActive()) return;
       
       setIsPlaying(false);
-      
-      // Usar refs para obtener valores actuales sin depender de closures
       const srcs = validAudioSrcs;
       const idx = currentIndexRef.current;
-      
-      // Verificar si el ciclo de imágenes se completó antes de cambiar de tramo
-      // Si no se completó, esperar a que se complete (el cambio se hará desde imageCycleCompleted)
       const cycleCompleted = window.__imageCycleCompleted?.[idx] || false;
       
-      if (!cycleCompleted && srcs && srcs.length > 1) {
-        console.log('[AudioContext] Audio terminó pero el ciclo de imágenes no se completó, esperando...');
-        // Disparar evento para notificar que el audio terminó pero esperamos el ciclo
+      if (!cycleCompleted && srcs?.length > 1) {
         window.dispatchEvent(new CustomEvent('audioSegmentEnded', { 
-          detail: { 
-            currentIndex: idx, 
-            isLastAudio: idx === srcs.length - 1,
-            wasPlaying: true,
-            waitingForImageCycle: true
-          } 
+          detail: { currentIndex: idx, isLastAudio: idx === srcs.length - 1, wasPlaying: true, waitingForImageCycle: true } 
         }));
         return;
       }
       
-      if (!srcs || srcs.length <= 1) {
-        console.log('[AudioContext] Solo hay un audio, no cambiar');
-        // Disparar evento para que el componente padre maneje la salida
+      if (!srcs || srcs.length <= 1 || idx === srcs.length - 1) {
         window.dispatchEvent(new CustomEvent('audioSegmentEnded', { 
-          detail: { 
-            currentIndex: idx, 
-            isLastAudio: true,
-            wasPlaying: true
-          } 
+          detail: { currentIndex: idx, isLastAudio: true, wasPlaying: true } 
         }));
         return;
       }
       
-      // Verificar si es el último audio
-      const isLastAudio = idx === srcs.length - 1;
-      
-      if (isLastAudio) {
-        console.log('[AudioContext] Es el último audio, no cambiar automáticamente');
-        // Disparar evento para que el componente padre maneje la salida
-        window.dispatchEvent(new CustomEvent('audioSegmentEnded', { 
-          detail: { 
-            currentIndex: idx, 
-            isLastAudio: true,
-            wasPlaying: true
-          } 
-        }));
-        return;
-      }
-      
-      // No es el último audio, cambiar al siguiente usando seekToAudio
       const nextIndex = idx + 1;
-      
-      console.log(`[AudioContext] Audio ${idx} terminó. Cambiando a índice ${nextIndex} usando seekToAudio`);
-      
-      // Disparar evento antes de cambiar para que los componentes puedan actualizar guiones, etc.
       window.dispatchEvent(new CustomEvent('audioSegmentEnded', { 
-        detail: { 
-          currentIndex: idx, 
-          nextIndex: nextIndex,
-          isLastAudio: false,
-          wasPlaying: true
-        } 
+        detail: { currentIndex: idx, nextIndex, isLastAudio: false, wasPlaying: true } 
       }));
       
-      // Usar seekToAudio directamente - ya maneja el fade out/in correctamente
-            if (seekToAudioRef.current) {
-        console.log(`[AudioContext] handleEnded: Llamando a seekToAudio(${nextIndex}, 0) para cambio con fade`);
-        // seekToAudio ya maneja el fade out del actual y fade in del siguiente
-        seekToAudioRef.current(nextIndex, 0);
-            } else {
-        console.warn('[AudioContext] handleEnded: seekToAudioRef.current no está disponible');
-            }
+      seekToAudioRef.current?.(nextIndex, 0);
     };
 
     audio.addEventListener('ended', handleEnded);
-
-    return () => {
-      audio.removeEventListener('ended', handleEnded);
-    };
-  }, []); // Sin dependencias - el listener se mantiene estable y usa refs para valores actuales
+    return () => audio.removeEventListener('ended', handleEnded);
+  }, [currentIndex, validAudioSrcs.length]);
 
   // Monitorear el tiempo del audio para hacer fade automático antes del final
   const validAudioSrcsLengthRef = React.useRef(validAudioSrcs.length);
@@ -858,8 +755,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
         // Verificar si hay siguiente audio
         const nextIndex = currentIdx + 1;
         if (nextIndex < validAudioSrcsLengthRef.current) {
-          console.log(`[AudioContext] Iniciando fade automático antes del final (${fadeOutTime.toFixed(2)}s de ${duration.toFixed(2)}s)`);
-          
           // Hacer fade out del actual
       if (fadeOutTweenRef.current) {
         fadeOutTweenRef.current.kill();
@@ -872,7 +767,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
             onComplete: () => {
               // Cambiar al siguiente audio usando seekToAudio (marcar que viene de fade automático)
             if (seekToAudioRef.current) {
-                console.log(`[AudioContext] Fade automático completado, cambiando a audio ${nextIndex}`);
                 seekToAudioRef.current(nextIndex, 0, true);
             }
             fadeOutTweenRef.current = null;
@@ -910,24 +804,20 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
     
     // Si estamos cambiando desde handleEnded, no hacer nada aquí para evitar interferencia
     if (isChangingFromEndedRef.current) {
-      console.log('[AudioContext] Ignorando useEffect principal porque el cambio viene de handleEnded');
       return;
     }
     
     // Evitar doble ejecución durante la inicialización
     if (isInitializingRef.current) {
-      console.log('[AudioContext] Inicialización ya en progreso, ignorando useEffect principal');
       return;
     }
     
     // Si hay múltiples audios y la pre-carga está en progreso, esperar
     if (validAudioSrcs.length > 1 && preloadInProgressRef.current) {
-      console.log('[AudioContext] Pre-carga en progreso, esperando antes de configurar audio...');
       // Reintentar después de un breve delay
       const retryTimeout = setTimeout(() => {
         if (!preloadInProgressRef.current) {
           // La pre-carga terminó, continuar con la configuración
-          console.log('[AudioContext] Pre-carga completada, continuando con configuración');
           // Forzar re-ejecución del useEffect actualizando una dependencia
           setCurrentIndex(prev => prev);
         }
@@ -941,7 +831,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
     
     // Limitar intentos para evitar loops infinitos
     if (initializationAttemptsRef.current > 10) {
-      console.warn('[AudioContext] Demasiados intentos de inicialización, deteniendo');
       isInitializingRef.current = false;
       return;
     }
@@ -954,7 +843,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
     if (useSimpleAudio && !currentAudioRef.current) {
       // Crear elemento Audio directamente como Timeline si no existe
       const audioSrcString = typeof currentSrc === 'string' ? currentSrc : (currentSrc?.default || currentSrc);
-      console.log(`[AudioContext] Creando Audio simple como Timeline: ${audioSrcString}`);
       currentAudioRef.current = new Audio();
       currentAudioRef.current.preload = 'auto';
       // El src se configurará en el flujo normal más abajo
@@ -971,7 +859,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
       // Usar el elemento del array correspondiente al índice actual
       const audio = audioElementsRef.current[currentIndex] || audioElementsRef.current[0];
       if (!audio) {
-        console.warn(`[AudioContext] No hay elemento Audio para índice ${currentIndex} en audioElementsRef`);
         // Fallback: continuar con la lógica antigua
       } else {
         // Pausar el elemento anterior si es diferente
@@ -982,7 +869,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
       
       // Establecer el nuevo elemento como actual
       currentAudioRef.current = audio;
-        console.log(`[AudioContext] Usando elemento Audio ${currentIndex}/${audioElementsRef.current.length} desde audioElementsRef`);
       // Continuar con la configuración normal del audio (setupAudioContext, etc.)
         // NO hacer return aquí, continuar con el flujo de configuración
         // El audio ya está configurado con src, solo necesita event listeners y AudioContext
@@ -992,7 +878,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
     // Obtener el audio actual (ya sea de audioElementsRef o currentAudioRef)
       const audio = currentAudioRef.current;
     if (!audio) {
-      console.warn('[AudioContext] No hay audio disponible para configurar');
       isInitializingRef.current = false;
       return;
     }
@@ -1013,7 +898,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
       
       // Asegurar que sea string (webpack siempre devuelve strings para imports estáticos)
       if (typeof currentSrcString !== 'string') {
-        console.warn('[AudioContext] Audio src no es string:', currentSrcString);
         currentSrcString = String(currentSrcString);
       }
       
@@ -1027,7 +911,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
         if (isIOS && hasMultipleAudiosLocal2) {
           if (audio.readyState < 2 || !audio.duration || !isFinite(audio.duration) || audio.duration <= 0) {
             // Forzar recarga si no está suficientemente cargado
-            console.log('[AudioContext] iOS múltiples audios: readyState o duration insuficiente, forzando recarga');
             // No hacer return, continuar con la configuración
           } else {
             // El src ya está configurado y está realmente listo
@@ -1087,7 +970,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
               if (!isLoaded) {
                 setIsLoaded(true);
                 setLoadingProgress(100);
-                console.log(`[AudioContext] Audio marked as loaded. Progress: ${progress.toFixed(1)}%, Buffer: ${bufferedEnd.toFixed(1)}s/${audio.duration.toFixed(1)}s`);
               }
             }
           } else if (audio.readyState >= 2) {
@@ -1095,7 +977,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
             if ((isIOS || isSafari) && !isLoaded) {
               setIsLoaded(true);
               setLoadingProgress(100);
-              console.log(`[AudioContext] Audio marked as loaded (iOS/Safari, readyState: ${audio.readyState})`);
             } else if (audio.readyState >= 3 && !isLoaded) {
               // Otros navegadores necesitan readyState 3
               setIsLoaded(true);
@@ -1106,7 +987,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
           // En iOS/Safari, si tenemos readyState 2, considerar cargado incluso sin duration
           setIsLoaded(true);
           setLoadingProgress(100);
-          console.log(`[AudioContext] Audio marked as loaded (iOS/Safari, readyState: ${audio.readyState}, sin duration aún)`);
         } else if (audio.readyState >= 3 && !isLoaded) {
           // Si tenemos suficiente readyState pero no duration, aún considerar cargado
           setIsLoaded(true);
@@ -1131,7 +1011,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
           // Verificar que el sourceNode esté realmente conectado
           try {
             // Si el sourceNode está conectado, reutilizar
-          console.log('[AudioContext] Reusing existing connection');
           audioContextRef.current = globalAudioContext;
           analyserRef.current = globalAnalyser;
           const bufferLength = globalAnalyser.frequencyBinCount;
@@ -1141,18 +1020,15 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
           return;
           } catch (e) {
             // Si hay error, reconectar
-            console.log('[AudioContext] Error verificando conexión existente, reconectando:', e);
-          }
+            }
         }
 
         if (globalAudioContext && connectedAudioElement && connectedAudioElement !== audio) {
-          console.log('[AudioContext] Disconnecting previous audio');
           try {
             if (globalSourceNode) {
               globalSourceNode.disconnect();
             }
           } catch (e) {
-            console.warn('[AudioContext] Error disconnecting:', e);
           }
           globalSourceNode = null;
           connectedAudioElement = null;
@@ -1161,7 +1037,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
         if (!globalAudioContext || globalAudioContext.state === 'closed') {
           try {
             globalAudioContext = new (window.AudioContext || window.webkitAudioContext)();
-            console.log('[AudioContext] Created AudioContext | state:', globalAudioContext.state);
             // Actualizar la referencia en window
             if (typeof window !== 'undefined') {
               Object.defineProperty(window, '__globalAudioContext', {
@@ -1170,7 +1045,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
               });
             }
           } catch (error) {
-            console.error('[AudioContext] Error creating AudioContext:', error);
             globalAudioContext = new (window.AudioContext || window.webkitAudioContext)();
             // Actualizar la referencia en window incluso si hay error
             if (typeof window !== 'undefined') {
@@ -1186,7 +1060,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
           globalAnalyser = globalAudioContext.createAnalyser();
           globalAnalyser.fftSize = 2048;
           globalAnalyser.smoothingTimeConstant = 0.3;
-          console.log('[AudioContext] Created AnalyserNode');
         }
 
         try {
@@ -1201,7 +1074,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
           if (globalAudioContext.state === 'suspended') {
             try {
               await globalAudioContext.resume();
-              console.log('[AudioContext] AudioContext resumido en setupAudioContext, estado:', globalAudioContext.state);
               // En Safari iOS con múltiples audios, puede necesitar múltiples intentos
               if ((isSafari || isIOS) && hasMultipleAudios && globalAudioContext.state === 'suspended') {
                 // Intentar múltiples veces con delays crecientes
@@ -1210,17 +1082,13 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
                   try {
                     await globalAudioContext.resume();
                     if (globalAudioContext.state !== 'suspended') {
-                      console.log(`[AudioContext] AudioContext resumido en Safari iOS (intento ${i + 1})`);
                       break;
                     }
                   } catch (e) {
-                    console.warn(`[AudioContext] Error resuming AudioContext (intento ${i + 1}):`, e);
                   }
                 }
               }
             } catch (resumeError) {
-              // En móviles, es normal que falle aquí - los listeners de eventos del usuario lo resumirán
-              console.log('[AudioContext] AudioContext suspendido (normal en móviles), será resumido por interacción del usuario');
             }
           }
           
@@ -1230,12 +1098,10 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
               if (globalAudioContext && globalAudioContext.state === 'suspended') {
                 try {
                   await globalAudioContext.resume();
-                  console.log('[AudioContext] AudioContext resumido desde interacción del usuario');
                   // Remover el listener después de resumir exitosamente
                   document.removeEventListener('touchstart', resumeOnUserInteraction, { capture: true });
                   document.removeEventListener('click', resumeOnUserInteraction, { capture: true });
                 } catch (err) {
-                  console.warn('[AudioContext] Error resumiendo AudioContext desde interacción:', err);
                 }
               }
             };
@@ -1252,11 +1118,8 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
           timeDataArrayRef.current = new Uint8Array(bufferLength);
 
           setIsInitialized(true);
-          console.log('[AudioContext] Setup successful');
-
         } catch (connectError) {
           if (connectError.name === 'InvalidStateError') {
-            console.error('[AudioContext] Audio already connected');
             setIsInitialized(true);
           } else {
             throw connectError;
@@ -1264,7 +1127,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
         }
 
       } catch (error) {
-        console.error('[AudioContext] Error setting up AudioContext:', error);
         setIsInitialized(true);
       }
     };
@@ -1280,7 +1142,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
         isInitializingRef.current = false;
         initializationAttemptsRef.current = 0;
       } catch (err) {
-        console.error('[AudioContext] Error en setupAudioContext desde handleCanPlay:', err);
         isInitializingRef.current = false; // Resetear incluso si hay error
       }
       
@@ -1292,7 +1153,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
           if (!isLoaded) {
             setIsLoaded(true);
             setLoadingProgress(100);
-            console.log(`[AudioContext] Audio ${currentIndex} marcado como cargado en handleCanPlay (iOS/Safari, readyState: ${audio.readyState})`);
           }
         } else if (audio.readyState >= 2) {
           // Otros navegadores necesitan readyState 2
@@ -1314,7 +1174,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
         if (!isLoaded) {
           setIsLoaded(true);
           setLoadingProgress(100);
-          console.log(`[AudioContext] Audio marcado como cargado en handleLoadedData (readyState: ${audio.readyState})`);
         }
       }
     };
@@ -1333,14 +1192,11 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
         if (!isLoaded) {
           setIsLoaded(true);
           setLoadingProgress(100);
-          console.log(`[AudioContext] Audio marcado como cargado en handleLoadedMetadata (duración: ${audio.duration.toFixed(2)}s, readyState: ${audio.readyState})`);
         }
       } else if ((isIOS || isSafari) && audio.readyState >= 1) {
-        // En iOS/Safari, loadedmetadata es suficiente para considerar cargado incluso sin duración
         if (!isLoaded) {
           setIsLoaded(true);
           setLoadingProgress(100);
-          console.log(`[AudioContext] Audio marcado como cargado en handleLoadedMetadata (iOS/Safari, readyState: ${audio.readyState})`);
         }
       }
     };
@@ -1348,7 +1204,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
     const handleError = () => {
       // Log simple del error, sin reintentos ni lógica compleja
       if (audio.error) {
-        console.warn('[AudioContext] Audio error:', audio.error.message, '| src:', audio.src);
       }
     };
 
@@ -1356,9 +1211,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
 
     // Configurar el src del audio actual solo si ha cambiado (y no viene de audioElementsRef)
     if (!needsFullSetup && audio.src !== currentSrcString) {
-      console.log(`[AudioContext] Cambiando src de ${audio.src || ''} a ${currentSrcString}`);
-      console.log(`[AudioContext] Índice actual: ${currentIndex}, Total audios: ${validAudioSrcs.length}`);
-      
       // Asegurar que la URL sea absoluta si es relativa (para producción)
       let finalSrc = currentSrcString;
       if (!finalSrc.startsWith('http') && !finalSrc.startsWith('data:')) {
@@ -1385,19 +1237,13 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
     audio.addEventListener('loadedmetadata', handleLoadedMetadata);
     audio.addEventListener('error', handleError);
     
-    // Si el audio ya está cargado y viene de audioElementsRef, configurar AudioContext inmediatamente
-    // O si el audio ya está cargado en general, asegurar que el AudioContext esté configurado
     if (audio.readyState >= 1) {
-      console.log(`[AudioContext] Audio ya está cargado (readyState: ${audio.readyState}), configurando AudioContext inmediatamente`);
-      // Usar setTimeout para asegurar que los event listeners estén configurados primero
       setTimeout(async () => {
         try {
           await setupAudioContext();
-          console.log('[AudioContext] AudioContext configurado exitosamente para audio precargado');
           isInitializingRef.current = false;
           initializationAttemptsRef.current = 0;
         } catch (err) {
-          console.error('[AudioContext] Error en setupAudioContext para audio precargado:', err);
           isInitializingRef.current = false;
         }
       }, 0);
@@ -1421,11 +1267,8 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
     // En iOS con múltiples audios, siempre forzar load() y dar más tiempo
     if (audio.readyState === 0 || isIOS || (isIOS && hasMultipleAudiosLocal3)) {
       try {
-        console.log(`[AudioContext] Llamando load() para audio ${currentIndex} (iOS: ${isIOS}, múltiples: ${hasMultipleAudiosLocal3}, readyState: ${audio.readyState})`);
         audio.load();
-        
       } catch (loadError) {
-        console.warn('[AudioContext] Error calling load():', loadError);
       }
     }
 
@@ -1454,11 +1297,9 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
         : (isChrome && !isMobile) ? 3 : minReadyState;
       
       if (audio.readyState >= readyThreshold && !isLoaded) {
-        // En iOS/Safari, no requerir duration - puede cargar bajo demanda
         if (isIOS || isSafari) {
           setIsLoaded(true);
           setLoadingProgress(100);
-          console.log(`[AudioContext] Audio ${currentIndex} marcado como cargado (iOS/Safari, readyState: ${audio.readyState})`);
           if (progressIntervalId) {
             clearInterval(progressIntervalId);
             progressIntervalId = null;
@@ -1518,7 +1359,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
       const setupAudioContext = async () => {
         try {
           if (connectedAudioElement === audio && globalAudioContext && globalAnalyser) {
-            console.log('[AudioContext] Reusing existing connection (simple audio)');
             audioContextRef.current = globalAudioContext;
             analyserRef.current = globalAnalyser;
             const bufferLength = globalAnalyser.frequencyBinCount;
@@ -1529,13 +1369,11 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
           }
 
           if (globalAudioContext && connectedAudioElement && connectedAudioElement !== audio) {
-            console.log('[AudioContext] Disconnecting previous audio (simple audio)');
             try {
               if (globalSourceNode) {
                 globalSourceNode.disconnect();
               }
             } catch (e) {
-              console.warn('[AudioContext] Error disconnecting:', e);
             }
             globalSourceNode = null;
             connectedAudioElement = null;
@@ -1544,7 +1382,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
           if (!globalAudioContext || globalAudioContext.state === 'closed') {
             try {
               globalAudioContext = new (window.AudioContext || window.webkitAudioContext)();
-              console.log('[AudioContext] Created AudioContext (simple audio) | state:', globalAudioContext.state);
               if (typeof window !== 'undefined') {
                 Object.defineProperty(window, '__globalAudioContext', {
                   get: () => globalAudioContext,
@@ -1552,7 +1389,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
                 });
               }
             } catch (error) {
-              console.error('[AudioContext] Error creating AudioContext:', error);
               globalAudioContext = new (window.AudioContext || window.webkitAudioContext)();
               if (typeof window !== 'undefined') {
                 Object.defineProperty(window, '__globalAudioContext', {
@@ -1567,7 +1403,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
             globalAnalyser = globalAudioContext.createAnalyser();
             globalAnalyser.fftSize = 2048;
             globalAnalyser.smoothingTimeConstant = 0.3;
-            console.log('[AudioContext] Created AnalyserNode (simple audio)');
           }
 
           try {
@@ -1580,9 +1415,7 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
             if (globalAudioContext.state === 'suspended') {
               try {
                 await globalAudioContext.resume();
-                console.log('[AudioContext] AudioContext resumido (simple audio), estado:', globalAudioContext.state);
               } catch (resumeError) {
-                console.warn('[AudioContext] Error resuming AudioContext:', resumeError);
               }
             }
 
@@ -1593,11 +1426,8 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
             timeDataArrayRef.current = new Uint8Array(bufferLength);
 
             setIsInitialized(true);
-            console.log('[AudioContext] Setup successful (simple audio)');
-
           } catch (connectError) {
             if (connectError.name === 'InvalidStateError') {
-              console.error('[AudioContext] Audio already connected (simple audio)');
               setIsInitialized(true);
             } else {
               throw connectError;
@@ -1605,7 +1435,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
           }
 
         } catch (error) {
-          console.error('[AudioContext] Error setting up AudioContext (simple audio):', error);
           setIsInitialized(true);
         }
       };
@@ -1628,7 +1457,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
         : (audioElementsRef.current[0] || currentAudioRef.current);
       
       if (!audio) {
-        console.warn('[AudioContext] No hay audio disponible para reproducir');
         resolve();
         return;
       }
@@ -1639,7 +1467,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
       // Asegurar que el AudioContext esté configurado antes de reproducir
       // Esto es crítico para que el analyser funcione
       if (!isInitialized || !analyserRef.current || connectedAudioElement !== audio) {
-        console.log('[AudioContext] AudioContext no inicializado o audio diferente, configurando antes de reproducir...');
         try {
           // Configurar AudioContext directamente aquí
           const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
@@ -1651,8 +1478,7 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
               try {
                 globalSourceNode.disconnect();
               } catch (e) {
-                console.warn('[AudioContext] Error disconnecting previous source:', e);
-              }
+                }
             }
             globalSourceNode = null;
             connectedAudioElement = null;
@@ -1661,7 +1487,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
           // Crear AudioContext si no existe
           if (!globalAudioContext || globalAudioContext.state === 'closed') {
             globalAudioContext = new (window.AudioContext || window.webkitAudioContext)();
-            console.log('[AudioContext] Created AudioContext in play()');
           }
           
           // Crear Analyser si no existe
@@ -1669,7 +1494,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
             globalAnalyser = globalAudioContext.createAnalyser();
             globalAnalyser.fftSize = 2048;
             globalAnalyser.smoothingTimeConstant = 0.3;
-            console.log('[AudioContext] Created AnalyserNode in play()');
           }
           
           // Conectar el audio al AudioContext
@@ -1679,10 +1503,8 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
               connectedAudioElement = audio;
               globalSourceNode.connect(globalAnalyser);
               globalAnalyser.connect(globalAudioContext.destination);
-              console.log('[AudioContext] Audio conectado al AudioContext en play()');
             } catch (connectError) {
               if (connectError.name === 'InvalidStateError') {
-                console.warn('[AudioContext] Audio already connected in play()');
               } else {
                 throw connectError;
               }
@@ -1692,7 +1514,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
           // Resumir AudioContext si está suspendido
           if (globalAudioContext.state === 'suspended') {
             await globalAudioContext.resume();
-            console.log('[AudioContext] AudioContext resumido en play()');
           }
           
           // Configurar refs
@@ -1703,9 +1524,7 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
           timeDataArrayRef.current = new Uint8Array(bufferLength);
           
           setIsInitialized(true);
-          console.log('[AudioContext] AudioContext configurado correctamente en play()');
         } catch (error) {
-          console.error('[AudioContext] Error configurando AudioContext en play():', error);
         }
       }
       
@@ -1716,12 +1535,10 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
           
           // Configurar AudioContext si no está inicializado
           if (!isInitialized) {
-            console.log('[AudioContext] Configurando AudioContext para audio simple antes de reproducir...');
             try {
               // Crear AudioContext si no existe
               if (!globalAudioContext || globalAudioContext.state === 'closed') {
                 globalAudioContext = new (window.AudioContext || window.webkitAudioContext)();
-                console.log('[AudioContext] Created AudioContext (simple audio in play)');
               }
               
               // Crear Analyser si no existe
@@ -1729,7 +1546,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
                 globalAnalyser = globalAudioContext.createAnalyser();
                 globalAnalyser.fftSize = 2048;
                 globalAnalyser.smoothingTimeConstant = 0.3;
-                console.log('[AudioContext] Created AnalyserNode (simple audio in play)');
               }
               
               // Conectar el audio al AudioContext
@@ -1738,7 +1554,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
                   try {
                     globalSourceNode.disconnect();
                   } catch (e) {
-                    console.warn('[AudioContext] Error disconnecting previous source:', e);
                   }
                 }
                 
@@ -1747,10 +1562,8 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
                   connectedAudioElement = audio;
                   globalSourceNode.connect(globalAnalyser);
                   globalAnalyser.connect(globalAudioContext.destination);
-                  console.log('[AudioContext] Audio conectado al AudioContext (simple audio in play)');
                 } catch (connectError) {
                   if (connectError.name === 'InvalidStateError') {
-                    console.warn('[AudioContext] Audio already connected (simple audio in play)');
                   } else {
                     throw connectError;
                   }
@@ -1760,7 +1573,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
               // Resumir AudioContext si está suspendido
               if (globalAudioContext.state === 'suspended') {
                 await globalAudioContext.resume();
-                console.log('[AudioContext] AudioContext resumido (simple audio in play)');
               }
               
               // Configurar refs
@@ -1771,18 +1583,14 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
               timeDataArrayRef.current = new Uint8Array(bufferLength);
               
               setIsInitialized(true);
-              console.log('[AudioContext] AudioContext configurado correctamente (simple audio in play)');
             } catch (error) {
-              console.error('[AudioContext] Error configurando AudioContext (simple audio in play):', error);
             }
           } else if (globalAudioContext && globalAudioContext.state === 'suspended') {
             await globalAudioContext.resume();
-            console.log('[AudioContext] AudioContext resumido antes de reproducir audio simple');
           }
           
           // Configurar volumen y hacer fade in como en el flujo normal
           audio.volume = 0;
-          console.log('[AudioContext] Reproduciendo audio simple como Timeline');
           await audio.play();
           setIsPlaying(true);
           
@@ -1800,7 +1608,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
             }
           });
         } catch (error) {
-          console.error('[AudioContext] Error reproduciendo audio simple:', error);
           resolve();
         }
         return;
@@ -1810,7 +1617,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
       if (useMultipleElements && howlInstancesRef.current.length > 0) {
         const howl = howlInstancesRef.current[currentIndex];
         if (!howl) {
-          console.warn('[AudioContext] No hay instancia Howl para reproducir');
           resolve();
           return;
         }
@@ -1831,8 +1637,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
           howl.fade(0, 1, FADE_DURATION * 1000, soundId);
           
           setIsPlaying(true);
-          console.log('[AudioContext] Reproduciendo con Howler.js');
-          
           // Manejar cuando termine
           howl.once('end', () => {
             setIsPlaying(false);
@@ -1846,7 +1650,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
           
           resolve();
         } catch (error) {
-          console.error('[AudioContext] Error reproduciendo con Howler.js:', error);
           resolve();
         }
         return;
@@ -1868,8 +1671,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
             if (audio.readyState >= 1) {
               audio.volume = 0;
               await audio.play();
-              console.log('[AudioContext] Chrome iOS: Audio reproducido desde audioElementsRef');
-              
               // Fade in
               volumeTweenRef.current = gsap.to(audio, {
                 volume: 1,
@@ -1904,7 +1705,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
               });
             }
           } catch (error) {
-            console.error('[AudioContext] Error en Chrome iOS con múltiples audios:', error);
             resolve();
           }
           return;
@@ -1923,7 +1723,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
           // En iOS/Android Safari, NO bloquear por pre-carga - pueden cargar audios bajo demanda
           // Solo esperar pre-carga en otros navegadores y solo un tiempo limitado
           if (hasMultipleAudios && !preloadedAudios && !isMobileSafari) {
-            console.log('[AudioContext] Múltiples audios: esperando a que todos estén pre-cargados...');
             const maxWaitTime = 3000; // Solo 3 segundos máximo
             const startTime = Date.now();
             
@@ -1932,18 +1731,15 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
               const checkInterval = setInterval(() => {
                 if (preloadedAudios) {
                   clearInterval(checkInterval);
-                  console.log('[AudioContext] Todos los audios pre-cargados, continuando con play()');
                   resolveWait();
                 } else if (Date.now() - startTime > maxWaitTime) {
                   clearInterval(checkInterval);
-                  console.warn('[AudioContext] Timeout esperando pre-carga, continuando de todas formas...');
                   resolveWait();
                 }
               }, 100);
             });
           } else if (hasMultipleAudios && !preloadedAudios && isMobileSafari) {
             // En iOS/Android Safari, no esperar - continuar inmediatamente
-            console.log('[AudioContext] iOS/Android Safari: No esperando pre-carga completa, continuando inmediatamente...');
           }
           
           if (volumeTweenRef.current) {
@@ -1955,7 +1751,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
             if (globalAudioContext.state === 'suspended') {
               try {
                 await globalAudioContext.resume();
-                console.log('[AudioContext] AudioContext resumido, estado:', globalAudioContext.state);
                 // En Chrome iOS, puede necesitar múltiples intentos
                 if ((isIOS || isChromeIOS) && globalAudioContext.state === 'suspended') {
                   // Intentar múltiples veces con delays crecientes
@@ -1964,16 +1759,13 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
                     try {
                       await globalAudioContext.resume();
                       if (globalAudioContext.state !== 'suspended') {
-                        console.log(`[AudioContext] AudioContext resumido en intento ${i + 1}`);
                         break;
                       }
                     } catch (e) {
-                      console.warn(`[AudioContext] Error resuming AudioContext (intento ${i + 1}):`, e);
                     }
                   }
                 }
               } catch (resumeError) {
-                console.warn('[AudioContext] Error resuming AudioContext in play:', resumeError);
               }
             }
           }
@@ -1996,7 +1788,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
                 if (!resolved && audio.readyState >= minReadyState) {
                   resolved = true;
                   cleanup();
-                  console.log(`[AudioContext] Audio listo (canplay, readyState: ${audio.readyState})`);
                   resolveWait();
                 }
               };
@@ -2005,7 +1796,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
                 if (!resolved && audio.readyState >= minReadyState) {
                   resolved = true;
                   cleanup();
-                  console.log(`[AudioContext] Audio listo (loadeddata, readyState: ${audio.readyState})`);
                   resolveWait();
                 }
               };
@@ -2014,7 +1804,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
                 if (!resolved) {
                   resolved = true;
                   cleanup();
-                  console.warn('[AudioContext] Error esperando audio listo, continuando...');
                   resolveWait();
                 }
               };
@@ -2035,7 +1824,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
                   resolved = true;
                   clearInterval(checkInterval);
                   cleanup();
-                  console.log(`[AudioContext] Audio listo (verificación periódica, readyState: ${audio.readyState})`);
                   resolveWait();
                 }
               }, 100);
@@ -2056,9 +1844,7 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
             }
             
             await currentAudioRef.current.play();
-            console.log('[AudioContext] Audio reproducido exitosamente');
           } catch (playError) {
-            console.warn('[AudioContext] Error en play():', playError);
             resolve();
             return;
           }
@@ -2074,7 +1860,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
             }
           });
         } catch (error) {
-          console.error('[AudioContext] Error playing:', error);
           resolve();
         }
       } else {
@@ -2090,7 +1875,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
         try {
           const audio = currentAudioRef.current;
           if (!audio.paused) {
-            console.log('[AudioContext] Pausando audio simple con fade');
             if (volumeTweenRef.current) {
               volumeTweenRef.current.kill();
             }
@@ -2111,7 +1895,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
             resolve();
           }
         } catch (error) {
-          console.error('[AudioContext] Error pausando audio simple:', error);
           setIsPlaying(false);
           resolve();
         }
@@ -2172,21 +1955,17 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
       }
       
       if (currentAudioRef.current && !currentAudioRef.current.paused) {
-        console.log('[AudioContext] pause() llamado, iniciando fade out del volumen');
         if (volumeTweenRef.current) {
           volumeTweenRef.current.kill();
           volumeTweenRef.current = null;
         }
         
         const currentVolume = currentAudioRef.current.volume;
-        console.log('[AudioContext] Volumen actual:', currentVolume);
-        
         volumeTweenRef.current = gsap.to(currentAudioRef.current, {
           volume: 0,
           duration: FADE_DURATION,
           ease: 'power2.in',
           onComplete: () => {
-            console.log('[AudioContext] Fade out del volumen completado');
             if (currentAudioRef.current) {
               currentAudioRef.current.pause();
               currentAudioRef.current.volume = 0;
@@ -2196,7 +1975,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
           }
         });
       } else {
-        console.log('[AudioContext] pause() llamado pero el audio ya está pausado o no existe');
         resolve();
       }
     });
@@ -2218,10 +1996,8 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
     // SIMPLIFICACIÓN: Para un solo audio, usar currentTime simple como Timeline
     if (useSimpleAudio && currentAudioRef.current) {
       try {
-        console.log(`[AudioContext] Seek en audio simple: ${targetTime}s`);
         currentAudioRef.current.currentTime = targetTime;
       } catch (error) {
-        console.error('[AudioContext] Error en seek de audio simple:', error);
       }
       return;
     }
@@ -2276,7 +2052,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
     }
     
     if (!audio) {
-      console.warn('[AudioContext] No hay audio disponible para seek');
       return;
     }
     
@@ -2327,20 +2102,17 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
           
           // Si el audio aún no está cargado, esperar a que se cargue de forma asíncrona
           if (!newAudio && index < audioElementsRef.current.length) {
-            console.log(`[AudioContext] Audio ${index} aún no está cargado, esperando...`);
             // Esperar hasta que el audio esté disponible (máximo 5 segundos)
             const waitForAudio = async () => {
               for (let attempts = 0; attempts < 100; attempts++) {
                 await new Promise(resolve => setTimeout(resolve, 50));
                 newAudio = audioElementsRef.current[index];
                 if (newAudio) {
-                  console.log(`[AudioContext] Audio ${index} ahora disponible después de ${attempts * 50}ms`);
                   break;
                 }
               }
               if (!newAudio) {
-                console.warn(`[AudioContext] Timeout esperando audio ${index}`);
-              }
+                }
             };
             await waitForAudio();
           }
@@ -2350,19 +2122,21 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
             newAudio = currentAudioRef.current;
           }
           
-          // Actualizar currentAudioRef ANTES de setCurrentIndex para que handleEnded use el valor correcto
           if (newAudio && currentAudioRef.current !== newAudio) {
-            if (currentAudioRef.current && currentAudioRef.current !== newAudio) {
-              currentAudioRef.current.pause();
-            }
+            currentAudioRef.current?.pause();
             currentAudioRef.current = newAudio;
+            
+            // Reconectar AudioContext si es necesario
+            if (!isInitialized || connectedAudioElement !== newAudio) {
+              try {
+                await setupAudioContext();
+              } catch (err) {}
+            }
           }
           
-          // Actualizar índices
           currentIndexRef.current = index;
           setCurrentIndex(index);
           
-          // Esperar a que el nuevo audio esté listo y reanudar si estaba reproduciendo
           if (newAudio) {
             if (newAudio.readyState >= 2) {
               if (targetTime > 0) {
@@ -2383,7 +2157,6 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
                   });
                   setIsPlaying(true);
                 } catch (err) {
-                  console.warn('[AudioContext] Error playing after seek:', err);
                   // Reintentar una vez
                   setTimeout(async () => {
                     if (newAudio && wasActuallyPlaying) {
@@ -2391,8 +2164,7 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
                         await newAudio.play();
                         setIsPlaying(true);
                       } catch (e) {
-                        console.error('[AudioContext] Error en reintento de play:', e);
-                      }
+                        }
                     }
                   }, 100);
                 }
@@ -2403,30 +2175,29 @@ export const AudioProvider = ({ children, track = null, audioSrcs = [] }) => {
             } else {
               // Esperar a que esté listo
               const waitForReady = () => {
-                if (newAudio && newAudio.readyState >= 2) {
-                  if (targetTime > 0) {
-                    newAudio.currentTime = targetTime;
-                  }
+            if (newAudio && newAudio.readyState >= 2) {
+              if (targetTime > 0) {
+                newAudio.currentTime = targetTime;
+              }
                   if (wasActuallyPlaying) {
-                    newAudio.play().then(() => {
-                      newAudio.volume = 0;
-                      fadeInTweenRef.current = gsap.to(newAudio, {
-                        volume: 1,
+                newAudio.play().then(() => {
+                  newAudio.volume = 0;
+                  fadeInTweenRef.current = gsap.to(newAudio, {
+                    volume: 1,
                         duration: FADE_DURATION,
-                        ease: 'power2.out',
-                        onComplete: () => {
-                          fadeInTweenRef.current = null;
-                        }
-                      });
+                    ease: 'power2.out',
+                    onComplete: () => {
+                      fadeInTweenRef.current = null;
+                    }
+                  });
                       setIsPlaying(true);
                     }).catch(err => {
-                      console.warn('[AudioContext] Error playing after wait:', err);
-                    });
-                  }
+                      });
+              }
                 } else if (newAudio) {
                   setTimeout(waitForReady, 50);
-                }
-              };
+            }
+          };
               waitForReady();
             }
           }

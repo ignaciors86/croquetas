@@ -42,7 +42,6 @@ const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef, currentAudioInd
     // Si ya tenemos refs externos del AudioContext, NO crear una nueva conexión
     // El AudioContext ya ha conectado el elemento audio, solo necesitamos usar los refs
     if (externalAnalyserRef && externalAnalyserRef.current && externalDataArrayRef && externalDataArrayRef.current) {
-      console.log('[AudioAnalyzer] Usando analyser y dataArray del AudioContext existente');
       analyserRef.current = externalAnalyserRef.current;
       dataArrayRef.current = externalDataArrayRef.current;
       // Inicializar timeDataArrayRef si no está disponible
@@ -94,7 +93,6 @@ const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef, currentAudioInd
     
     try {
       if (typeof window === 'undefined' || (!window.AudioContext && !window.webkitAudioContext)) {
-        console.warn('[AudioAnalyzer] AudioContext not available in this environment');
         updateIsInitialized(false);
         return;
       }
@@ -139,7 +137,6 @@ const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef, currentAudioInd
         updateIsInitialized(true);
       }
     } catch (error) {
-      console.warn('[AudioAnalyzer] Error setting up AudioContext:', error);
       // Si el error es que ya está conectado, intentar reutilizar
       if (error.message.includes('already connected')) {
         if (audio.__audioAnalyzerContext && audio.__audioAnalyzerAnalyser) {
@@ -206,12 +203,10 @@ const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef, currentAudioInd
 
     // Verificar que tenemos todos los refs necesarios
     if (!analyserRef.current) {
-      console.warn(`[AudioAnalyzer] Analyser not available. Audio may be connected to another AudioContext. Audio analysis will not work.`);
       return;
     }
 
     if (!dataArrayRef.current) {
-      console.warn(`[AudioAnalyzer] dataArrayRef not available`);
       return;
     }
 
@@ -253,7 +248,6 @@ const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef, currentAudioInd
     let frameCount = 0;
     const analyze = () => {
       if (!analyserRef.current || !dataArrayRef.current) {
-        console.warn(`[AudioAnalyzer] analyze: Missing refs | analyserRef: ${!!analyserRef.current} | dataArrayRef: ${!!dataArrayRef.current}`);
         animationFrameId = requestAnimationFrame(analyze);
         return;
       }
@@ -395,8 +389,7 @@ const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef, currentAudioInd
             // Pasar información sobre si debe ser cuadro sólido basado en análisis de frecuencias agudas
             onBeat(normalizedVolume, solidSquareDetected);
           } catch (error) {
-            console.error(`[AudioAnalyzer] ERROR in onBeat callback: ${error.message}`);
-          }
+            }
         }
       }
       
@@ -413,11 +406,9 @@ const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef, currentAudioInd
           try {
             onVoice(normalizedVolume, voiceEnergy);
           } catch (error) {
-            console.error(`[AudioAnalyzer] onVoice error: ${error.message} | stack: ${error.stack}`);
-          }
+            }
         } else {
-          console.warn(`[AudioAnalyzer] onVoice callback is null`);
-        }
+          }
       }
 
       // Calcular ritmo estimado (BPM aproximado basado en intervalos entre beats)

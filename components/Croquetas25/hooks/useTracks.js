@@ -287,7 +287,6 @@ export const useTracks = () => {
         setTracks(finalTracks);
         setIsLoading(false);
       } catch (error) {
-        console.error('[useTracks] Error cargando tracks:', error);
         setIsLoading(false);
       }
     };

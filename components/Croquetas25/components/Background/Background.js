@@ -409,7 +409,7 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
     };
     
     createCallback();
-  }, [onTriggerCallbackRef, getNextImage, preloadNextImages, viewportDimensions]);
+  }, [onTriggerCallbackRef, getNextImage, preloadNextImages, viewportDimensions, currentAudioIndex]);
 
   useEffect(() => {
     squares.forEach(square => {
@@ -535,20 +535,15 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
                         if (isLastImageRef?.current) {
                           isLastImageRef.current = false;
                         }
-                        console.log('[Background] Última imagen completada, iniciando fade out del volumen');
-                        console.log('[Background] pause es función:', typeof pause === 'function');
                         // Hacer fade out del volumen (igual que el botón de volver)
                         // pause() retorna una promesa que se resuelve cuando el fade out termina
                         if (typeof pause === 'function') {
                           await pause();
-                          console.log('[Background] Fade out del volumen completado, volviendo al menú');
-                        } else {
-                          console.warn('[Background] pause no es una función, saltando fade out');
-                        }
+                          } else {
+                          }
                         // Llamar a onAllComplete para volver al menú
                         await onAllComplete();
                       } catch (error) {
-                        console.error('[Background] Error en fade out y navegación:', error);
                         // Si hay error, limpiar el square de todas formas
                         cleanupSquare();
                       }
@@ -616,20 +611,15 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
                     if (isLastImageRef?.current) {
                       isLastImageRef.current = false;
                     }
-                    console.log('[Background] Última imagen completada, iniciando fade out del volumen');
-                    console.log('[Background] pause es función:', typeof pause === 'function');
                     // Hacer fade out del volumen (igual que el botón de volver)
                     // pause() retorna una promesa que se resuelve cuando el fade out termina
                     if (typeof pause === 'function') {
                       await pause();
-                      console.log('[Background] Fade out del volumen completado, volviendo al menú');
-                    } else {
-                      console.warn('[Background] pause no es una función, saltando fade out');
-                    }
+                      } else {
+                      }
                     // Llamar a onAllComplete para volver al menú
                     await onAllComplete();
                   } catch (error) {
-                    console.error('[Background] Error en fade out y navegación:', error);
                     // Si hay error, limpiar el square de todas formas
                     cleanupSquare();
                   }
@@ -643,7 +633,6 @@ const Background = ({ onTriggerCallbackRef, analyserRef, dataArrayRef, isInitial
           // Los cuadrados sin imagen ahora los maneja el sintetizador procedural
           // No necesitamos animarlos aquí
         } catch (error) {
-          console.error(`[Background] Animation error: ${error.message}`);
           if (squareRefs.current[square.id]) {
             const el = squareRefs.current[square.id];
             if (el) {
