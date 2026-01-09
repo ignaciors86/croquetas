@@ -544,8 +544,8 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
         // Fallback: lógica original: filtrar por subcarpeta
       const currentSubfolder = getCurrentSubfolder();
       const normalizedSubfolder = currentSubfolder === null ? '__root__' : currentSubfolder;
-        
-        // Resetear imágenes y índice cuando se vuelve a una subcarpeta (para poder volver a verlas)
+      
+      // Resetear imágenes y índice cuando se vuelve a una subcarpeta (para poder volver a verlas)
       if (subfolderImageIndicesRef.current.has(normalizedSubfolder)) {
         const indices = subfolderImageIndicesRef.current.get(normalizedSubfolder);
         if (indices.length > 0) {
@@ -684,7 +684,7 @@ export const useGallery = (selectedTrack = null, onSubfolderComplete = null, onA
     // Obtener índice actual de esta subcarpeta (inicializar si no existe)
     if (!subfolderCurrentIndexRef.current.has(normalizedSubfolder)) {
       subfolderCurrentIndexRef.current.set(normalizedSubfolder, 0);
-      }
+    }
     let subfolderIndex = subfolderCurrentIndexRef.current.get(normalizedSubfolder);
     
     // Asegurarse de que el índice no exceda el número de imágenes disponibles

@@ -39,6 +39,22 @@ const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef, currentAudioInd
     
     const audio = audioRef.current;
     
+    // Si cambió el índice de audio, limpiar conexiones anteriores
+    if (lastAudioIndexRef.current !== null && lastAudioIndexRef.current !== currentAudioIndex) {
+      // Limpiar referencias del audio anterior
+      if (audio.__audioAnalyzerSourceNode) {
+        try {
+          audio.__audioAnalyzerSourceNode.disconnect();
+        } catch (e) {}
+        delete audio.__audioAnalyzerSourceNode;
+        delete audio.__audioAnalyzerContext;
+        delete audio.__audioAnalyzerAnalyser;
+        delete audio.__audioAnalyzerDataArray;
+        delete audio.__audioAnalyzerTimeArray;
+        delete audio.__audioAnalyzerConnected;
+      }
+    }
+    
     // Si ya tenemos refs externos del AudioContext, NO crear una nueva conexión
     // El AudioContext ya ha conectado el elemento audio, solo necesitamos usar los refs
     if (externalAnalyserRef && externalAnalyserRef.current && externalDataArrayRef && externalDataArrayRef.current) {
@@ -58,9 +74,9 @@ const AudioAnalyzer = ({ onBeat, onVoice, onAudioData, audioRef, currentAudioInd
     }
     
     // Verificar si el audio ya está conectado a otro AudioContext
-    // Reutilizar la conexión existente - el MediaElementSourceNode está conectado al elemento,
-    // no al archivo específico, por lo que funciona cuando cambia el src
-    if (audio.__audioAnalyzerSourceNode) {
+    // Reutilizar la conexión existente SOLO si es el mismo audio Y el mismo índice
+    // Si cambió el índice, forzar reconexión
+    if (audio.__audioAnalyzerSourceNode && lastAudioIndexRef.current === currentAudioIndex && lastAudioIndexRef.current !== null) {
       // Reutilizar el AudioContext existente si está disponible
       if (audio.__audioAnalyzerContext) {
         audioContextRef.current = audio.__audioAnalyzerContext;

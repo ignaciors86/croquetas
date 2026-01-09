@@ -66,26 +66,26 @@ const Croquetas25 = () => {
     const introContainer = document.getElementById('intro-container');
     if (introContainer) {
       gsap.to(introContainer, {
-        opacity: 0,
+          opacity: 0,
         duration: 0.3,
-        ease: 'power2.in',
-        onComplete: () => {
-          setSelectedTrack(null);
+          ease: 'power2.in',
+          onComplete: () => {
+            setSelectedTrack(null);
           setIsPlaying(false);
           window.history.replaceState({}, '', '/');
           // Mostrar menú con fade in
-          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
             if (introContainer) {
               gsap.fromTo(introContainer, 
-                { opacity: 0 },
+                  { opacity: 0 },
                 { opacity: 1, duration: 0.6, ease: 'power2.out', delay: 0.1 }
-              );
-            }
-          });
-        }
-      });
-    } else {
-      setSelectedTrack(null);
+                );
+              }
+            });
+          }
+        });
+      } else {
+        setSelectedTrack(null);
       setIsPlaying(false);
       window.history.replaceState({}, '', '/');
     }
@@ -343,7 +343,7 @@ const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
           }
         };
         loadGuion();
-            } else {
+        } else {
         setGuion(null);
       }
       return;
@@ -372,7 +372,7 @@ const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
           } catch (parseError) {
             setGuion(null);
           }
-            } else {
+      } else {
           setGuion(null);
         }
       } catch (error) {
@@ -456,7 +456,7 @@ const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
     if (target.closest('button, a, input, [role="button"], .croquetas25__seek, .croquetas25__back-button, .seek, .seek__progressContainer, .seek__progressBar')) {
       return;
     }
-    
+
     e.preventDefault();
     e.stopPropagation();
     
@@ -567,7 +567,7 @@ const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
     const diagonalCanvas = document.querySelector('.diagonal-synthesizer');
     if (diagonalCanvas) {
       exitTimeline.to(diagonalCanvas, {
-        opacity: 0,
+            opacity: 0,
         duration: 0.5,
         ease: 'power2.in'
       }, 0.2);
@@ -576,7 +576,7 @@ const CroquetasContent = ({ track, isPlaying, setIsPlaying, onExit }) => {
     // Ocultar elementos de reproducción (Seek, AudioAnalyzer, BackButton, FullscreenButton)
     if (playbackElementsRef.current) {
       exitTimeline.to(playbackElementsRef.current, {
-        opacity: 0,
+            opacity: 0,
         duration: 0.4,
         ease: 'power2.in'
       }, 0.3);
